@@ -1,3 +1,4 @@
+import time
 import json
 from kafka import KafkaConsumer
 
@@ -20,14 +21,17 @@ def main():
     )
 
     print(f"consuming from '{TOPIC}' as group 'printer' (earliest)... Ctrl-C to stop")
-    for message in consumer:
-        event = message.value          # already a dict — deserialize ran on it
-        partition = message.partition  # Kafka metadata: which partition this came from
-        offset = message.offset        # Kafka metadata: position in that partition
+    try:
+        for message in consumer:
+            event = message.value          # already a dict — deserialize ran on it
+            partition = message.partition  # Kafka metadata: which partition this came from
+            offset = message.offset        # Kafka metadata: position in that partition
 
-      
-        print(f"Partition: {partition}, symbol: {event['symbol']}, seq:{event['seq']}, offset:{offset}")
-
+        
+            print(f"Partition: {partition}, symbol: {event['symbol']}, seq:{event['seq']}, offset:{offset}")
+            time.sleep(0.1)
+    finally:
+        consumer.close()
 
 if __name__ == "__main__":
     main()

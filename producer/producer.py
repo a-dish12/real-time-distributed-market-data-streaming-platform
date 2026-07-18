@@ -11,7 +11,7 @@ from kafka import KafkaProducer
 
 BOOTSTRAP = "localhost:29092"   # the door into Kafka from your Mac
 TOPIC = "market-events"
-SYMBOLS = ["AAPL", "MSFT", "TSLA"]
+SYMBOLS = ["AAPL", "MSFT", "TSLA","NVDA","INTC"]
 
 
 def make_event(symbol: str, seq: int) -> dict:
@@ -39,19 +39,21 @@ def main() -> None:
 
     counters = {s: 0 for s in SYMBOLS}
 
-    for _ in range(10):
-        for symbol in SYMBOLS:
-            event = make_event(symbol, counters[symbol])
-            counters[symbol] += 1
+    try:
+        while True:
+            for symbol in SYMBOLS:
+                event = make_event(symbol, counters[symbol])
+                counters[symbol] += 1
 
-            producer.send(TOPIC, key=partition_key(event), value=event)
-            print("sent:", event)
+                producer.send(TOPIC, key=partition_key(event), value=event)
+                print("sent:", event)
 
-        time.sleep(0.5)
+            time.sleep(0.5)
 
-    producer.flush()   # wait for everything to actually reach the broker
-    producer.close()
-    print("done — 30 events sent")
+            producer.flush()   # wait for everything to actually reach the broker
+    finally:
+            producer.close()
+    
 
 
 if __name__ == "__main__":
