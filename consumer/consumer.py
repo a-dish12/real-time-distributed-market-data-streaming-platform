@@ -1,4 +1,3 @@
-import time
 import json
 from kafka import KafkaConsumer
 
@@ -9,8 +8,9 @@ BOOTSTRAP = "localhost:29092"
 WINDOW = 1.0      # window width in seconds
 DELAY  = 0.2      # 200ms watermark grace
 
-windows={}
-watermark=float("-inf")
+windows={}      #partition-> {(symbol,window):acc}
+watermarks={}   #partition-> float
+# watermark=float("-inf")
 
 def deserialize(raw_bytes):
     return json.loads(raw_bytes)
@@ -20,19 +20,22 @@ def emit(key, bar):
     print(f"SEAL {symbol} window[{w_start}] "
         f"O {bar['o']} H {bar['h']} L {bar['l']} C {bar['c']}")
 
-def handle_tick(symbol,price,event_time):
-    global watermark
+def handle_tick(event,partition):
+    symbol,price,event_time=event["symbol"],event["price"],event["event_time"]
 
     window_start=int(event_time//WINDOW)* WINDOW
     window_end=window_start+WINDOW
 
-    watermark=max(watermark,event_time-DELAY)
+    # watermark=max(watermark,event_time-DELAY)
+ 
+    watermark=max(watermarks.get(partition,float("-inf")),event_time-DELAY)  
+    watermarks[partition]=watermark
 
-    for key in list(windows.keys()):
+    for key in list(windows.setdefault(partition,{})):
         _,w_start=key
         w_end=w_start+WINDOW
         if watermark>=w_end:
-            bar=windows.pop(key)
+            bar=windows[partition].pop(key)
             emit(key,bar)
     
 
@@ -41,25 +44,21 @@ def handle_tick(symbol,price,event_time):
         print(f"DROP {symbol} @ {event_time} (late, window[{window_start}] sealed)")
 
         #TODO :audit trail
-    elif key in windows:
-        acc = windows[key]
+    elif key in windows[partition]:
+        acc = windows[partition][key]
         acc["h"] = max(acc["h"], price)
         acc["l"] = min(acc["l"], price)
         acc["c"] = price
     else:
-        windows[key]={"o":price,"h":price,"l":price,"c":price}
+        windows[partition][key]={"o":price,"h":price,"l":price,"c":price}
 
-
-            
-
-    
 
 
 def main():
     consumer = KafkaConsumer(
         TOPIC,
         bootstrap_servers=BOOTSTRAP,
-        group_id="printer-debug1",
+        group_id="printer-debug2",
         auto_offset_reset="earliest",
         value_deserializer=deserialize,   # Kafka calls your function on each message's bytes
     )
@@ -73,7 +72,7 @@ def main():
 
         
             print(f"Partition: {partition}, symbol: {event['symbol']}, seq:{event['seq']}, offset:{offset}")
-            handle_tick(event["symbol"],event["price"],event["event_time"])
+            handle_tick(event,partition)
             
     finally:
         consumer.close()
