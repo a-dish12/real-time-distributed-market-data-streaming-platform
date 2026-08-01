@@ -18,7 +18,8 @@ verified from consumer output.
 
 Each partition carries its own watermark, so a consumer holding several partitions at
 different depths — including on a fresh replay of a full backlog — aggregates all of
-them correctly without one partition starving another.
+them correctly without one partition starving another. Windows on a partition that
+falls silent are closed by a wall-clock backstop rather than hanging open indefinitely.
 
 - **Producer** (`producer/producer.py`) — generates a continuous feed of events
   (`symbol`, `price`, `size`, `event_time`, `seq`), serializes them to JSON, and
@@ -30,8 +31,9 @@ them correctly without one partition starving another.
   consumer group and aggregates ticks into event-time windows. State is held per
   partition; for each (symbol, window) it tracks OHLC, sealing and emitting a candle
   once that partition's watermark passes the window's end. Ticks arriving after their
-  window has sealed are dropped. Run multiple instances with the same group id to split
-  partitions across them.
+  window has sealed are dropped. A timer-driven backstop closes trailing windows on
+  partitions that have gone quiet. Run multiple instances with the same group id to
+  split partitions across them.
 - **Infrastructure** (`docker-compose.yml`) — a single Kafka broker in KRaft mode plus
   a Kafka UI, orchestrated with a `Makefile` for common commands.
 
@@ -67,21 +69,57 @@ window width, dropping it if its window has already sealed, otherwise updating (
 the (symbol, window) accumulator — open frozen by the first tick, high/low tracked, close
 overwritten each tick.
 
+### Closing windows on a quiet partition
+
+The watermark only advances when a tick arrives, so a partition with no incoming traffic
+would never seal its last window — the data is complete, it simply never gets emitted. A
+wall-clock backstop covers that gap. The consumer polls with a timeout rather than blocking
+on message arrival, so the loop keeps cycling when the feed is silent, and a throttled check
+runs a few times a second regardless of traffic.
+
+When a partition qualifies as idle, the backstop does **not** seal windows directly. It
+advances that partition's watermark to the end of its furthest-along open window and calls
+the same sweep the normal path uses. Keeping one seal path rather than two means a late tick
+for a backstop-closed window still meets the existing late-check and is dropped rather than
+resurrecting the window as a new accumulator.
+
+The new watermark value is derived from window ends already held in state, so it stays pure
+event-time; wall-clock only decides *when* to intervene. That separation matters because the
+two clocks are not comparable — replaying a stored backlog puts event-times days behind the
+consumer's clock, and any rule comparing wall-clock directly against a window's end would
+seal everything on the first tick of the timer.
+
+Two independent thresholds govern this. The **grace period** (200ms) is how long a window
+waits for stragglers. The **idle threshold** (800ms) is how long a partition must be silent
+before the backstop steps in — sized to genuine idleness rather than lateness, and
+deliberately larger than the grace period, which is what makes it safe to seal every open
+window on an idle partition at once. Both are calibrated to this simulator's tick rate; a
+real feed would size the idle threshold to the liquidity of the symbols involved.
+
+A partition qualifies as idle only if it is **both** silent in wall-clock terms **and**
+caught up to the end of its log (`position >= end_offset`). Silence alone is not enough: a
+single consumer draining three partitions leaves the ones it is not currently fetching
+looking silent while their records still sit unread. Sealing on that signal alone would
+advance the watermark past data that is still coming, and those records would be dropped on
+arrival — one partition's drain speed corrupting another partition's output.
+
 ## Known limitation
 
-The consumer sweeps a partition's windows only when a tick arrives *on that partition*. A
-partition that goes quiet is therefore never swept, so its last open window never seals —
-the data is complete, it simply never gets emitted. In this project every symbol ticks
-continuously, so it does not surface, but a real feed with illiquid symbols would need a
-time-driven seal (sweep on a timer, not only on arrival) to close trailing windows. This is
-the next thing to address.
+A tick that arrives for a window the backstop has already closed is dropped, which is
+correct, but the case has not been exercised: it requires a partition to go quiet, seal,
+then receive a tick whose event-time falls back inside the sealed window. Every symbol here
+ticks continuously, so the situation does not arise.
 
-The partition count is also fixed at 3. Because symbols are hashed to partitions, adding a
+The partition count is fixed at 3. Because symbols are hashed to partitions, adding a
 partition would rehash some symbols onto a different partition — splitting a symbol's ticks
 across two partitions, breaking the per-symbol ordering the aggregation relies on, and
 producing two partial candles for the same (symbol, window). Repartitioning a keyed,
 stateful topic is an operational action (stop, drain, reprocess), not something the consumer
 can absorb online.
+
+State for a partition lost on rebalance is not cleaned up. The backstop correctly declines
+to seal windows for a partition the consumer no longer owns, but the entry lingers in memory
+until the process exits. This belongs with the failure/recovery work.
 
 ## Architecture
 
@@ -163,12 +201,18 @@ make down
   reading, not just inherit an orphaned one.
 - Offsets auto-commit on a ~5s interval, not per message, so a consumer killed
   mid-interval will replay its most recent events on restart (at-least-once delivery).
+- Replaying a backlog is a different regime from a live feed. Records already on disk
+  come back in large fetches, so arrival is limited by fetch speed rather than by the
+  producer, and partitions drain unevenly — one can run for hundreds of records while
+  another delivers nothing. The backstop's idle check accounts for this by requiring a
+  partition to be caught up to its log end, not merely quiet.
+- Piping consumer output to a file block-buffers stdout, which can make the process look
+  stalled while it is running normally. Use `python -u` when redirecting.
 
 ## Roadmap
 
 Upcoming stages (see `CHANGELOG.md` for detail as they land):
 
-- **Time-driven seal** — sweep on a timer so trailing windows on quiet partitions close
 - **VWAP** — volume-weighted average price alongside OHLC per window
 - **WebSocket fan-out** — publish sealed candles to a new topic and stream them to a
   live browser dashboard (candlestick + VWAP)
