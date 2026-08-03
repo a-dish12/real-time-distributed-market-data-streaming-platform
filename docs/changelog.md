@@ -1,0 +1,125 @@
+# Changelog
+
+Stage-by-stage history. Each entry records what landed and why. Full reasoning for the
+larger design decisions lives in [`docs/`](docs/).
+
+---
+
+## Stage 4 — publishing sealed candles *(in progress)*
+
+Sealed candles are published to a new `bars` topic rather than only printed, making
+aggregation a step in the pipeline rather than its end. Accumulators additionally track a
+tick count, carried on the message.
+
+Bars are keyed by symbol so a symbol's candles stay ordered within one partition;
+`window_start` travels in the payload. The topic has one partition. Sends are asynchronous
+with an error callback, and the producer is flushed before the consumer is closed.
+
+Remaining in this stage: a web service consuming `bars` and streaming candles to a browser
+dashboard.
+
+Design record: [`docs/output-pipeline.md`](docs/output-pipeline.md)
+
+---
+
+## Seal trigger — closing windows on a quiet partition
+
+Sealing no longer rides on tick arrival. A partition that went quiet previously never swept,
+so its last windows were fully accumulated but never emitted.
+
+The consumer now polls with a timeout instead of blocking on message arrival, so the loop
+cycles even when the feed is silent. A throttled backstop runs a few times a second; when a
+partition is both wall-clock quiet and caught up to the end of its log, it advances that
+partition's watermark to the end of its furthest open window and calls the existing sweep —
+it does not seal directly. Keeping one seal path means a late tick for a backstop-closed
+window still meets the existing drop check.
+
+Verified by replaying a fixed backlog under a fresh group id: without the backstop, five
+windows accumulate and are never emitted; with it, every drain-time seal comes from the
+watermark path with zero drops, followed by a single burst of five.
+
+Design record: [`docs/idle-partitions.md`](docs/idle-partitions.md)
+
+---
+
+## Stage 3.5 — per-partition watermarks
+
+Aim of this stage was to fix the singular watermark used across all partitions. Kafka
+guarantees ordering within a partition but not across them.
+
+Observed: one consumer drained partition 2's backlog first, dragging the shared watermark to
+~t+6.8. It then started partition 0 from the beginning, where every event was older than that
+watermark. Those events failed the late-check and were dropped in a burst — around seven
+seconds of AAPL/MSFT/INTC data, for which no accumulator was ever created and no candle ever
+emitted. Drops stopped only when partition 0's event times climbed past t+6.8.
+
+Each partition now carries its own watermark, and each accumulator seals against the
+watermark of the partition it lives under. State is nested `windows[partition][(symbol,
+window)]` with `watermarks[partition]` alongside it.
+
+Design record: [`docs/watermarks.md`](docs/watermarks.md)
+
+---
+
+## Stage 3 — event-time windowing
+
+- Consumers now place ticks in 1 second window buckets to keep track of the OHLC.
+- An arbitrary watermark trails 200ms behind the newest `event_time` seen, sealing the window
+  once it passes the window's end. The existence of the watermark is to cater for out-of-order
+  or late-arriving events.
+- At this stage a global watermark is used for the 3 partitions, which led to a series of
+  drops on subsequent partitions as only one consumer was run. The consumer drained one
+  partition's backlog first (partition 2, TSLA/NVDA), which pushed the shared watermark far
+  forward, and then when it reached the other partitions their older-timestamped events landed
+  past that advanced watermark and were dropped. This means each partition would need its own
+  watermark. Initially the plan was to have a watermark per partition and, as we have 3 of the
+  latter, one consumer per partition — however the issue would be that if one consumer dies,
+  its partition is reassigned to a surviving consumer which then juggles 2 partitions and 2
+  watermarks, bringing back the starvation.
+- Bucket placement is as follows: a tick arrives, its intended window is calculated from the
+  floor of the `event_time`; if `watermark >= window_end` we discard the tick (a future version
+  may cater for the audit trail). If the `(symbol, window)` exists in the dict we adjust the
+  OHLC (except the opening price). Otherwise this represents the need to create a new window.
+- Prices now use a random walk (`random.gauss`), adding price realism over the flat
+  `price = 100.0`.
+
+---
+
+## Stage 2 — consumer groups and rebalancing
+
+- Added more ticker symbols to make full use of partitions.
+- Producer bug: `close()` was inside the loop, which killed the feed after a single pass.
+  `try/finally` now handles the close after a Ctrl-C. The same mechanism was implemented for
+  consumers, where earlier there was no handling of Ctrl-C, meaning uncommitted offsets got
+  replayed on restart.
+- Ran 3 consumer terminals and experimented with killing and restarting them. What was
+  noticed is that partition assignment is reshuffled completely — restarting a consumer does
+  not mean the others keep their previous partitions (assignment is recomputed on every
+  membership change).
+- `enable_auto_commit` fires on a 5s interval and not per message, which is why the replay
+  window on restart happened.
+
+---
+
+## Stage 1 — walking skeleton
+
+- Built dummy producer and consumer to show the flow source → producer → broker → consumer.
+- Producer connects to the broker on `localhost:29092`, generates events using `make_event()`,
+  serializes to JSON and publishes to `market-events`.
+- Consumer connects to the same broker, deserializes each event, and prints partition, offset,
+  seq and symbol.
+- Each symbol maps deterministically to one partition only (AAPL and MSFT both hashed to
+  partition 0 — a real collision; TSLA to partition 2). Proved from consumer output of the 30
+  events, 10 per symbol.
+- Offset is per-partition, not per-symbol.
+
+---
+
+## Stage 0 — infrastructure skeleton
+
+- `docker-compose.yml` defines one Kafka broker and one Kafka UI on a private Docker network,
+  so the two containers can reach each other by name.
+- Ports of that network are exposed to the host: 29092 for host processes to reach the broker,
+  8080 for the browser to reach the Kafka UI.
+- `Makefile` shortens the common container commands.
+- Topic `market-events` created with 3 partitions, which persists across broker restarts.
