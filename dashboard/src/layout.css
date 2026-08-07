@@ -1,0 +1,279 @@
+/* Layout only. Every value is a token from tokens.css — nothing here introduces a new
+   colour, size or radius. Structure follows ui_kits/dashboard/kit.css in the design system. */
+
+.app {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-page);
+}
+
+.app__bar {
+  height: var(--header-h);
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: 0 var(--gutter-page);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-panel);
+}
+
+.app__mark {
+  font: var(--type-symbol);
+  letter-spacing: var(--tracking-label);
+  color: var(--text-primary);
+}
+
+.app__sub {
+  font: var(--type-numeric-sm);
+  color: var(--text-tertiary);
+}
+
+/* Three panels share the viewport height; all readable at once, no page scroll. */
+.app__main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  padding: var(--gutter-page);
+  min-height: 0;
+}
+
+/* ── panel ── */
+
+.sp {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  /* State changes are worth animating; data is not. */
+  transition: border-color var(--dur-base) var(--ease);
+}
+
+.sp--fault {
+  border-color: var(--coral-800);
+}
+
+.sp__head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-8);
+  padding: var(--space-4) var(--gutter-panel);
+  border-bottom: 1px solid var(--border-hairline);
+}
+
+.sp__id {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 92px;
+}
+
+.sp__symbol {
+  font: var(--type-symbol);
+  letter-spacing: var(--tracking-tight);
+  color: var(--text-primary);
+}
+
+.sp__endpoint {
+  font: var(--type-numeric-sm);
+  color: var(--text-tertiary);
+}
+
+.sp__price {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-5);
+  min-width: 260px;
+}
+
+/* The price is the largest thing on the panel, and tabular so digits do not jitter. */
+.sp__last {
+  font: var(--type-price-sm);
+  color: var(--text-primary);
+  transition: color var(--dur-base) var(--ease);
+}
+
+.sp__last--stale {
+  color: var(--text-tertiary);
+}
+
+.sp__delta {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font: var(--type-numeric);
+}
+
+.sp__delta--up { color: var(--price-up); }
+.sp__delta--down { color: var(--price-down); }
+.sp__delta--flat { color: var(--price-flat); }
+
+.sp__pct {
+  font: var(--type-numeric-sm);
+  opacity: 0.75;
+}
+
+.sp__stats {
+  display: flex;
+  gap: var(--space-8);
+}
+
+.sp__stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.sp__statLabel {
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-label);
+}
+
+.sp__statValue {
+  font: var(--type-numeric);
+  color: var(--text-secondary);
+}
+
+.sp__right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+/* ── connection chip ── */
+
+.conn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--border-subtle);
+  font: var(--type-ui);
+  color: var(--text-secondary);
+  transition: color var(--dur-base) var(--ease), border-color var(--dur-base) var(--ease),
+    background-color var(--dur-base) var(--ease);
+}
+
+.conn__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  flex: none;
+}
+
+.conn__meta {
+  font: var(--type-numeric-sm);
+  opacity: 0.8;
+}
+
+.conn--connected {
+  color: var(--status-live);
+  border-color: var(--mint-900);
+  background: color-mix(in oklab, var(--mint-900) 45%, transparent);
+}
+
+.conn--connecting {
+  color: var(--status-pending);
+  border-color: var(--amber-900);
+  background: color-mix(in oklab, var(--amber-900) 45%, transparent);
+}
+
+/* A dropped socket must read as dropped — a stale chart that looks live is the worst
+   failure this tool can have, so the chip pulses until it recovers. */
+.conn--disconnected {
+  color: var(--status-fault);
+  border-color: var(--coral-800);
+  background: color-mix(in oklab, var(--coral-900) 45%, transparent);
+  animation: conn-pulse 1.6s var(--ease) infinite;
+}
+
+@keyframes conn-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conn--disconnected { animation: none; }
+}
+
+/* ── plot ── */
+
+.sp__plot {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  background: var(--surface-plot);
+}
+
+.sp__plotHost {
+  position: absolute;
+  inset: 0;
+}
+
+.sp__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  text-align: center;
+  padding: var(--space-6);
+  pointer-events: none;
+}
+
+.sp__emptyTitle {
+  font: var(--type-ui);
+  color: var(--text-secondary);
+}
+
+.sp__emptyBody {
+  font: var(--type-numeric-sm);
+  color: var(--text-tertiary);
+  max-width: 46ch;
+}
+
+/* ── footer ── */
+
+.sp__foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-3) var(--gutter-panel);
+  border-top: 1px solid var(--border-hairline);
+  font: var(--type-numeric-sm);
+  color: var(--text-tertiary);
+}
+
+.sp__footRight {
+  margin-left: auto;
+}
+
+.sp__badge {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-xs);
+  background: var(--amber-900);
+  color: var(--amber-500);
+  font: var(--type-label);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+}
+
+.sp__badge--note {
+  background: var(--surface-well);
+  color: var(--text-tertiary);
+}

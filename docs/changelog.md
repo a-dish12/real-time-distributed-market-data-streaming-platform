@@ -5,7 +5,7 @@ larger design decisions lives in [`docs/`](docs/).
 
 ---
 
-## Stage 5 — WebSocket fan-out *(in progress)*
+## Stage 5 — WebSocket fan-out and the browser dashboard
 
 A FastAPI service consumes `bars` and streams candles to browsers over a WebSocket at
 `/ws/{symbol}`, one connection per chart. Each client receives the last sixty bars for its
@@ -44,10 +44,48 @@ output were traced and are correct behaviour — a gap across a producer restart
 no notion of missing time) and an occasional missing one-second window (no events landed in
 that bucket, so no candle exists to emit).
 
-Remaining in this stage: the browser dashboard itself.
+The dashboard itself is a React and TypeScript application built with Vite, rendering three
+symbols as three independent WebSocket connections and three candlestick charts. Charting is
+Lightweight Charts, which creates and owns its own canvas and cannot be rendered into by React.
 
-Design records: [`docs/async-runtime.md`](docs/async-runtime.md),
-[`docs/websocket-fanout.md`](docs/websocket-fanout.md)
+That single constraint decides the shape of the client. The chart and its series are created
+once in an effect with an empty dependency array, held in refs, and disposed in that effect's
+cleanup; no bar data ever enters `useState` or `useReducer`. Only connection status, retry
+attempt, and a flat summary snapshot rebuilt at most once per bar cross into React state. The
+rejected alternative — retaining the bar array in state, which is what every React charting
+example does — re-renders the panel on every message, and keying the chart effect on that array
+destroys and rebuilds the chart once a second, discarding whatever zoom or pan the viewer had
+applied. Socket handling lives in a module that does not import React at all, so the rule is
+structural rather than a comment someone has to remember.
+
+Candles are positioned by `window_start` and never by arrival order, because `live` means
+"arrived after your backfill" rather than "just happened". Backfill is sorted before it reaches
+`setData`. A live bar for a window older than the one drawn is declined and counted rather than
+allowed to throw: reinserting it would mean rebuilding the series and resetting the viewport to
+correct a candle that has already scrolled into history, so the cost would land on the viewer
+rather than on the CPU. A re-emission of the drawn window is declined unless its tick `count` is
+strictly higher — the aggregator suppresses its wall-clock backstop while draining a backlog, so
+a replayed window can absorb a tick the live pass sealed past and be the more complete copy. The
+three outcomes are tallied separately and surfaced in the panel footer, because an ignored
+duplicate and a dropped late bar indicate different upstream conditions.
+
+The WebSocket URL is derived from `window.location`, so the page and its socket are always one
+origin and no backend host appears anywhere in application code. `npm run build` emits to
+`backend/static`, which uvicorn serves, and Vite proxies `/ws` with `ws: true` in development so
+that one expression is correct in both environments. `webserver.py` had imported `StaticFiles`
+without ever mounting it, so a build was invisible and `GET /` returned 404; the mount is now
+registered last, since a catch-all at `/` would otherwise shadow `/ws/{symbol}`, and guarded by
+an `isdir` check so the server still starts before the first build exists.
+
+Verified against the running pipeline rather than mock data. Canvas DOM node identity held
+across a thirty-second run while the series grew, confirming the chart is never rebuilt;
+`ResizeObserver` construct and disconnect counts matched StrictMode's deliberate double-mount
+exactly, confirming the cleanup path runs; and bars carrying backdated and duplicated
+`window_start` values, injected directly into the `bars` topic, exercised each declined path
+with no exception thrown.
+
+Design records: [`async_runtime.md`](async_runtime.md),
+[`websocket_fanout.md`](websocket_fanout.md), [`frontend.md`](frontend.md)
 
 ---
 

@@ -1,0 +1,136 @@
+/* Tokens lifted from the Tape design system (tokens/*.css). Only the subset this dashboard
+   uses is carried over; no value is altered and nothing new is introduced here. */
+
+@import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+:root {
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+
+  /* warm charcoal neutrals */
+  --gray-950: oklch(0.155 0.005 75);
+  --gray-900: oklch(0.190 0.006 75);
+  --gray-850: oklch(0.222 0.006 75);
+  --gray-800: oklch(0.255 0.007 75);
+  --gray-750: oklch(0.295 0.008 75);
+  --gray-700: oklch(0.355 0.009 75);
+  --gray-600: oklch(0.455 0.009 75);
+  --gray-500: oklch(0.565 0.009 75);
+  --gray-400: oklch(0.660 0.009 75);
+  --gray-300: oklch(0.760 0.008 75);
+  --gray-100: oklch(0.925 0.006 75);
+
+  /* mint — up / rising / connected */
+  --mint-500: oklch(0.780 0.155 168);
+  --mint-600: oklch(0.680 0.135 168);
+  --mint-900: oklch(0.290 0.055 168);
+
+  /* coral — down / falling / disconnected */
+  --coral-500: oklch(0.665 0.190 25);
+  --coral-600: oklch(0.580 0.180 25);
+  --coral-800: oklch(0.395 0.105 25);
+  --coral-900: oklch(0.290 0.075 25);
+
+  /* amber — attention / pending, used sparingly */
+  --amber-500: oklch(0.800 0.150 78);
+  --amber-900: oklch(0.300 0.060 74);
+
+  /* surfaces */
+  --surface-page: var(--gray-950);
+  --surface-panel: var(--gray-900);
+  --surface-well: var(--gray-800);
+  --surface-plot: oklch(0.175 0.005 75);
+
+  /* borders */
+  --border-subtle: var(--gray-750);
+  --border-hairline: oklch(0.255 0.007 75);
+
+  /* text */
+  --text-primary: var(--gray-100);
+  --text-secondary: var(--gray-300);
+  --text-tertiary: var(--gray-500);
+  --text-label: var(--gray-500);
+
+  /* market semantics — the only strong colour in the system */
+  --price-up: var(--mint-500);
+  --price-down: var(--coral-500);
+  --price-flat: var(--gray-400);
+
+  /* connection semantics */
+  --status-live: var(--mint-600);
+  --status-pending: var(--amber-500);
+  --status-fault: var(--coral-500);
+
+  /* chart */
+  --chart-grid: oklch(0.235 0.006 75);
+  --chart-axis-text: var(--gray-500);
+
+  /* spacing */
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 12px;
+  --space-6: 16px;
+  --space-7: 20px;
+  --space-8: 24px;
+  --gutter-panel: var(--space-5);
+  --gutter-page: var(--space-6);
+
+  --radius-xs: 2px;
+  --radius-sm: 3px;
+  --radius-md: 4px;
+  --radius-pill: 999px;
+  --header-h: 44px;
+
+  /* typography */
+  --text-2xs: 10px;
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-lg: 15px;
+  --text-2xl: 22px;
+  --text-3xl: 28px;
+  --leading-flush: 1;
+  --leading-snug: 1.3;
+  --leading-normal: 1.5;
+  --weight-regular: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --tracking-tight: -0.02em;
+  --tracking-label: 0.09em;
+
+  --type-price-sm: var(--weight-medium) var(--text-3xl)/var(--leading-flush) var(--font-mono);
+  --type-numeric: var(--weight-regular) var(--text-md)/var(--leading-snug) var(--font-mono);
+  --type-numeric-sm: var(--weight-regular) var(--text-xs)/var(--leading-snug) var(--font-mono);
+  --type-symbol: var(--weight-semibold) var(--text-lg)/var(--leading-flush) var(--font-mono);
+  --type-body: var(--weight-regular) var(--text-md)/var(--leading-normal) var(--font-sans);
+  --type-ui: var(--weight-medium) var(--text-sm)/var(--leading-snug) var(--font-sans);
+  --type-label: var(--weight-medium) var(--text-2xs)/var(--leading-snug) var(--font-sans);
+
+  --numeric-features: "tnum" 1, "zero" 1, "ss01" 1;
+
+  /* motion — reserved for state changes, never for data */
+  --dur-fast: 90ms;
+  --dur-base: 160ms;
+  --ease: cubic-bezier(0.2, 0, 0.2, 1);
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--surface-page);
+  color: var(--text-primary);
+  font: var(--type-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tnum {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: var(--numeric-features);
+}

@@ -57,6 +57,7 @@ app=FastAPI(lifespan=lifespan)
 
 @app.websocket("/ws/{symbol}")
 async def handler(websocket: WebSocket,symbol:str):
+
     await websocket.accept()
     
     
@@ -81,3 +82,17 @@ async def handler(websocket: WebSocket,symbol:str):
         pass
     finally:
         del connections[symbol][websocket]
+
+
+# Serve the built dashboard. `npm run build` in dashboard/ emits here (see vite.config.ts),
+# so the page and its WebSocket share an origin in production.
+#
+# Mounted last on purpose: Starlette matches routes in registration order and a mount at "/"
+# matches everything, so registering it above would shadow /ws/{symbol}. html=True serves
+# index.html for "/". The directory check keeps the server startable before the first build.
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+if os.path.isdir(STATIC_DIR):
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+else:
+    print(f"no build at {STATIC_DIR} — run `npm run build` in dashboard/ to serve the UI")
