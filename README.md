@@ -5,9 +5,9 @@ correct partitioning and ordering guarantees, aggregates them into per-second OH
 republishes those candles as a stream of their own, and fans them out live to browsers over
 WebSockets.
 
-Built in deliberate stages, each proven before the next begins. [`CHANGELOG.md`](CHANGELOG.md)
-records what landed at each stage; the design records in [`docs/`](docs/) carry the full
-reasoning behind the decisions that needed it.
+Built in deliberate stages, each proven before the next begins.
+[`docs/changelog.md`](docs/changelog.md) records what landed at each stage; the design records
+in [`docs/`](docs/) carry the full reasoning behind the decisions that needed it.
 
 ```
 producer ──▶ market-events ──▶ aggregator ──▶ bars ──▶ web server ──▶ browser
@@ -31,6 +31,12 @@ instances with the same group id to split partitions across them.
 `/ws/{symbol}`, one connection per chart. Each client receives the last sixty bars on connect
 and then a live feed, with no gap at the seam.
 
+**Dashboard** (`dashboard/`) — a React and TypeScript client on Vite, drawing three symbols as
+three independent WebSocket connections and three candlestick charts. The chart is an imperative
+object held in refs rather than React state, so a zoom or pan survives the incoming stream.
+`npm run build` emits into `backend/static`, which the web server serves, so the page and its
+socket share an origin.
+
 **Infrastructure** (`docker-compose.yml`) — one Kafka broker in KRaft mode plus a Kafka UI,
 with a `Makefile` for the common commands.
 
@@ -41,28 +47,38 @@ The interesting decisions, each with its rejected alternatives and accepted cost
 | | |
 |---|---|
 | [**Per-partition watermarks**](docs/watermarks.md) | Kafka orders within a partition, not across them. A single shared watermark lets a fast-draining partition advance past a slow one's data, which is then dropped on arrival. |
-| [**Idle partitions**](docs/idle-partitions.md) | A watermark only advances when a tick arrives, so a partition that goes quiet never seals its last window. A wall-clock backstop closes it — without introducing a second seal path. |
-| [**Output pipeline**](docs/output-pipeline.md) | Why sealed candles go through a topic rather than straight to a socket, why bars are keyed by symbol, and why `bars` has one partition. |
-| [**Async runtime**](docs/async-runtime.md) | Why the web server runs on an event loop with `aiokafka` instead of bridging a blocking consumer through a thread and a queue, and what that buys elsewhere in the file. |
-| [**WebSocket fan-out**](docs/websocket-fanout.md) | Per-connection state, the race between replaying history and joining a live feed, and what happens when a client disappears mid-send. |
+| [**Idle partitions**](docs/idle_partitions.md) | A watermark only advances when a tick arrives, so a partition that goes quiet never seals its last window. A wall-clock backstop closes it — without introducing a second seal path. |
+| [**Output pipeline**](docs/output_pipeline.md) | Why sealed candles go through a topic rather than straight to a socket, why bars are keyed by symbol, and why `bars` has one partition. |
+| [**Async runtime**](docs/async_runtime.md) | Why the web server runs on an event loop with `aiokafka` instead of bridging a blocking consumer through a thread and a queue, and what that buys elsewhere in the file. |
+| [**WebSocket fan-out**](docs/websocket_fanout.md) | Per-connection state, the race between replaying history and joining a live feed, and what happens when a client disappears mid-send. |
+| [**Browser dashboard**](docs/frontend.md) | Where React stops and the charting library starts, why no bar data lives in React state, how a late or duplicated candle is handled, and why the page and its socket share an origin. |
 
 ## Getting started
 
-Prerequisites: Docker Desktop and Python 3.12+.
+Prerequisites: Docker Desktop, Python 3.12+ and Node 20+.
 
 ```bash
 make up                              # start the broker and Kafka UI
 make topics-create                   # create both topics (safe to re-run)
 source .venv/bin/activate
 pip install -r requirements.txt
+cd dashboard && npm install && npm run build && cd ..   # build the UI into backend/static
 
 python producer/producer.py          # terminal 1 — continuous feed
 python consumer/consumer.py          # terminal 2 — aggregate into candles
-cd backend && uvicorn webserver:app  # terminal 3 — serve them
+cd backend && uvicorn webserver:app  # terminal 3 — serve the API and the UI
 ```
 
-Then connect a client. Without a dashboard yet, a terminal WebSocket client shows the stream
-directly:
+Then open http://localhost:8000. The charts fill at one candle per second, starting from
+whatever history the web server holds.
+
+To work on the frontend, leave uvicorn running and start Vite alongside it with
+`cd dashboard && npm run dev`, then use http://localhost:5173. Vite proxies `/ws` through to
+uvicorn, so the same code that works there works when served from the backend. Note that the
+static mount is resolved at import, so a first build while uvicorn is already running needs a
+restart before the UI appears.
+
+A terminal WebSocket client is still the quickest way to see raw frames:
 
 ```bash
 pip install websockets
@@ -124,11 +140,11 @@ and reject malformed messages at write time; neither matters at this volume.
 ## Tech stack
 
 Apache Kafka 3.8.0 (KRaft mode, no ZooKeeper) · Python with `kafka-python` (producer,
-aggregator) and `aiokafka` + FastAPI (web server) · Docker Compose · Kafka UI (Provectus)
+aggregator) and `aiokafka` + FastAPI (web server) · React and TypeScript on Vite with
+Lightweight Charts (dashboard) · Docker Compose · Kafka UI (Provectus)
 
 ## Roadmap
 
-- **Browser dashboard** — charts fed by the WebSocket stream, replaying history on connect
 - **VWAP** — volume-weighted average price alongside OHLC per window
 - **Rigor tiers** — failure/recovery testing (commit-on-seal, rebalance state cleanup),
   observability, load testing
