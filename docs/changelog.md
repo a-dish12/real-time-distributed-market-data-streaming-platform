@@ -5,7 +5,53 @@ larger design decisions lives in [`docs/`](docs/).
 
 ---
 
-## Stage 4 — publishing sealed candles *(in progress)*
+## Stage 5 — WebSocket fan-out *(in progress)*
+
+A FastAPI service consumes `bars` and streams candles to browsers over a WebSocket at
+`/ws/{symbol}`, one connection per chart. Each client receives the last sixty bars for its
+symbol on connect, then a live feed, with no gap and no duplicate at the join.
+
+This is the first process in the pipeline that must wait on several things at once — the
+broker socket and every open browser socket — so it runs on an asyncio event loop with
+`aiokafka` rather than the blocking `kafka-python` client used upstream. The rejected
+alternative was a background thread bridging a blocking consumer into the server through a
+queue; that would put `bars` and `connections` under two threads and require locking every
+append and every iteration. The absence of any lock in `webserver.py` is that decision made
+visible, not an oversight.
+
+Recent history is served from an in-process `deque(maxlen=60)` per symbol rather than by
+reading back from the log. `bars` has one partition carrying every symbol interleaved, so
+offset arithmetic yields bulk-recent rather than per-symbol-recent; the deque gives the
+latter by construction.
+
+Backfill and the live feed are reconciled per connection. A client registers itself before
+its history is read, so a bar sealing mid-backfill is buffered against that connection rather
+than lost or sent out of order; the buffer is drained immediately after the history and the
+connection is then flipped to live. The flag and buffer are per connection because ten
+browsers can be at different phases simultaneously — a single shared flag lets one client
+finishing its backfill splice a future bar into another client's history, which is the same
+failure shape as the global watermark of Stage 3.5.
+
+Each server instance joins Kafka under a unique `group_id` derived from its PID. A consumer
+group *divides* partitions among its members; fan-out needs every instance to see every
+symbol, so each instance is a group of one. `auto_offset_reset="latest"` follows from that:
+with no committed offset ever, the setting fires on every start, and replaying retained
+history would do work proportional to retention to produce a result bounded at sixty bars.
+
+Verified end to end against a terminal WebSocket client: backfill transitions to live at
+consecutive `window_start` values with no gap and no overlap. Two apparent anomalies in the
+output were traced and are correct behaviour — a gap across a producer restart (the deque has
+no notion of missing time) and an occasional missing one-second window (no events landed in
+that bucket, so no candle exists to emit).
+
+Remaining in this stage: the browser dashboard itself.
+
+Design records: [`docs/async-runtime.md`](docs/async-runtime.md),
+[`docs/websocket-fanout.md`](docs/websocket-fanout.md)
+
+---
+
+## Stage 4 — publishing sealed candles
 
 Sealed candles are published to a new `bars` topic rather than only printed, making
 aggregation a step in the pipeline rather than its end. Accumulators additionally track a
@@ -14,9 +60,6 @@ tick count, carried on the message.
 Bars are keyed by symbol so a symbol's candles stay ordered within one partition;
 `window_start` travels in the payload. The topic has one partition. Sends are asynchronous
 with an error callback, and the producer is flushed before the consumer is closed.
-
-Remaining in this stage: a web service consuming `bars` and streaming candles to a browser
-dashboard.
 
 Design record: [`docs/output-pipeline.md`](docs/output-pipeline.md)
 

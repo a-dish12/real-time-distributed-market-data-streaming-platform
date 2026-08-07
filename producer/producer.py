@@ -52,7 +52,7 @@ def main() -> None:
                 producer.send(TOPIC, key=partition_key(event), value=event)
                 print("sent:", event)
 
-            time.sleep(0.01)
+            time.sleep(0.5)
 
             producer.flush()   # wait for everything to actually reach the broker
     except KeyboardInterrupt:
