@@ -1,5 +1,7 @@
 # Real-Time Distributed Market Data Streaming Platform
 
+<!-- TODO: 30s recording of `docker compose up` → three charts filling. Goes here, above everything. -->
+
 A streaming pipeline that ingests synthetic market-data events, moves them through Kafka with
 correct partitioning and ordering guarantees, aggregates them into per-second OHLC candles,
 republishes those candles as a stream of their own, and fans them out live to browsers over
@@ -7,7 +9,7 @@ WebSockets.
 
 Built in deliberate stages, each proven before the next begins.
 [`docs/changelog.md`](docs/changelog.md) records what landed at each stage; the design records
-in [`docs/`](docs/) carry the full reasoning behind the decisions that needed it.
+in [`docs/`](docs/) carry the reasoning behind the decisions that needed it.
 
 ```
 producer ──▶ market-events ──▶ aggregator ──▶ bars ──▶ web server ──▶ browser
@@ -55,63 +57,31 @@ The interesting decisions, each with its rejected alternatives and accepted cost
 
 ## Getting started
 
-Prerequisites: Docker Desktop, Python 3.12+ and Node 20+.
+Prerequisites: Docker Desktop, Python 3.12+, Node 20+.
 
 ```bash
-make up                              # start the broker and Kafka UI
-make topics-create                   # create both topics (safe to re-run)
+make up                              # broker and Kafka UI
+make topics-create                   # both topics, safe to re-run
 source .venv/bin/activate
 pip install -r requirements.txt
-cd dashboard && npm install && npm run build && cd ..   # build the UI into backend/static
+cd dashboard && npm install && npm run build && cd ..   # UI into backend/static
 
-python producer/producer.py          # terminal 1 — continuous feed
-python consumer/consumer.py          # terminal 2 — aggregate into candles
-cd backend && uvicorn webserver:app  # terminal 3 — serve the API and the UI
+python producer/producer.py          # terminal 1
+python consumer/consumer.py          # terminal 2
+cd backend && uvicorn webserver:app  # terminal 3
 ```
 
-Then open http://localhost:8000. The charts fill at one candle per second, starting from
-whatever history the web server holds.
+Then open http://localhost:8000. Charts fill at one candle per second from whatever history the
+web server holds.
 
-To work on the frontend, leave uvicorn running and start Vite alongside it with
-`cd dashboard && npm run dev`, then use http://localhost:5173. Vite proxies `/ws` through to
-uvicorn, so the same code that works there works when served from the backend. Note that the
-static mount is resolved at import, so a first build while uvicorn is already running needs a
-restart before the UI appears.
+For frontend work, leave uvicorn running and start Vite alongside it with
+`cd dashboard && npm run dev`, then use http://localhost:5173 — Vite proxies `/ws` through to
+uvicorn.
 
-A terminal WebSocket client is still the quickest way to see raw frames:
+Kafka UI is at http://localhost:8080. `make topics`, `make describe`, `make down` cover the rest.
 
-```bash
-pip install websockets
-python -m websockets ws://localhost:8000/ws/AAPL
-```
-
-Expect roughly one `backfill` message per second of uptime (capped at sixty), then a `live`
-message each second as windows seal.
-
-`make topics` lists topics, `make describe` shows partition counts, `make down` stops
-everything. The Kafka UI at http://localhost:8080 shows topics, partitions, and message
-contents — including `bars`, where sealed candles can be verified directly. Kill an aggregator
-and watch the rest rebalance.
-
-## Things worth knowing when running it
-
-- Topics persist across broker restarts. Kafka is a log, not a queue: reading does not remove,
-  so the full backlog stays on disk until retention evicts it.
-- The aggregator uses `auto_offset_reset="earliest"`, which only takes effect the first time a
-  given group id reads. **Use a fresh group id to replay the whole backlog** — that is what
-  makes the per-partition watermark behaviour observable, since it recreates the uneven
-  partition depths the old shared watermark handled incorrectly.
-- Replaying a backlog is a different regime from a live feed: records come back in large
-  fetches, so partitions drain unevenly and one can run for hundreds of records while another
-  delivers nothing.
-- Offsets auto-commit on a ~5s timer, not per message, so a consumer killed mid-interval
-  replays its most recent events on restart (at-least-once).
-- Partition assignment is recomputed on every membership change (default range assignor, not
-  sticky), so surviving consumers can lose partitions they were already reading.
-- `uvicorn --reload` restarts the worker on every save: new event loop, new consumer group,
-  **empty deques**. Backfill will look broken immediately after an edit. This is expected.
-- Piping consumer output to a file block-buffers stdout and can make a healthy process look
-  stalled. Use `python -u` when redirecting.
+[`docs/running.md`](docs/running.md) covers replaying a backlog, the offset and rebalance
+behaviour worth knowing about, and the surprises that look like bugs and are not.
 
 ## Known limitations
 
