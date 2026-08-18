@@ -1,5 +1,4 @@
-/* Layout only. Every value is a token from tokens.css — nothing here introduces a new
-   colour, size or radius. Structure follows ui_kits/dashboard/kit.css in the design system. */
+/* layout only, every value is a token from tokens.css and nothing new is introduced here */
 
 .app {
   height: 100vh;
@@ -30,7 +29,7 @@
   color: var(--text-tertiary);
 }
 
-/* Three panels share the viewport height; all readable at once, no page scroll. */
+/* the panels share the viewport height, all readable at once with no page scroll */
 .app__main {
   flex: 1;
   display: flex;
@@ -40,7 +39,7 @@
   min-height: 0;
 }
 
-/* ── panel ── */
+/* panel */
 
 .sp {
   flex: 1;
@@ -51,7 +50,7 @@
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   overflow: hidden;
-  /* State changes are worth animating; data is not. */
+  /* state changes are worth animating, data is not */
   transition: border-color var(--dur-base) var(--ease);
 }
 
@@ -93,7 +92,7 @@
   min-width: 260px;
 }
 
-/* The price is the largest thing on the panel, and tabular so digits do not jitter. */
+/* largest thing on the panel, tabular so the digits do not jitter */
 .sp__last {
   font: var(--type-price-sm);
   color: var(--text-primary);
@@ -150,7 +149,7 @@
   gap: var(--space-5);
 }
 
-/* ── connection chip ── */
+/* connection chip */
 
 .conn {
   display: inline-flex;
@@ -190,8 +189,8 @@
   background: color-mix(in oklab, var(--amber-900) 45%, transparent);
 }
 
-/* A dropped socket must read as dropped — a stale chart that looks live is the worst
-   failure this tool can have, so the chip pulses until it recovers. */
+/* a stale chart that looks live is the worst failure this thing can have, so the chip
+   pulses until the socket recovers */
 .conn--disconnected {
   color: var(--status-fault);
   border-color: var(--coral-800);
@@ -208,7 +207,7 @@
   .conn--disconnected { animation: none; }
 }
 
-/* ── plot ── */
+/* plot */
 
 .sp__plot {
   position: relative;
@@ -246,7 +245,7 @@
   max-width: 46ch;
 }
 
-/* ── footer ── */
+/* footer */
 
 .sp__foot {
   flex: none;

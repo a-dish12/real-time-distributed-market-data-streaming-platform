@@ -1,49 +1,33 @@
 import { parseBarMessage, type Bar, type ConnState } from './types'
 
-/* One socket per symbol. This module is deliberately framework-free: it owns the connection,
-   the reconnect backoff, and the running aggregates, and it hands bars to a sink.
-   React never sees a bar — see useSymbolFeed.ts for where the (small) state boundary sits. */
+/* one socket per symbol, no React in here, bars go to a sink */
 
-/* What the chart did with a live bar. The chart is the only thing that knows what is actually
-   drawn, so it decides and reports back; the feed just tallies. These are deliberately four
-   distinct outcomes — an ignored duplicate and a dropped late bar indicate different upstream
-   conditions, and collapsing them would lose that. */
+/* what the chart did with a live bar, only the chart knows what is actually drawn */
 export type LiveOutcome =
   | 'applied'               // new window, appended
   | 'duplicate-superseded'  // same window re-emitted with a higher count, candle replaced
   | 'duplicate-ignored'     // same window re-emitted with an equal or lower count, declined
   | 'late-dropped'          // window predates the last drawn one, declined
-  | 'not-drawn'             // no series yet; nothing was drawn, nothing is tallied
+  | 'not-drawn'             // no series yet, nothing drawn and nothing tallied
 
-/** What the chart registers with the feed. Both callbacks are imperative. */
 export interface BarSink {
-  /** Called once per connection, with bars already sorted ascending by window_start. */
+  /** already sorted ascending by window_start */
   onBackfill(bars: Bar[]): void
-  /** Called for each live bar, in arrival order. Returns what the chart did with it. */
   onLive(bar: Bar): LiveOutcome
 }
 
-/* The only thing that crosses into React state, rebuilt at most once per bar.
-
-   Deliberately flat primitives rather than a retained Bar: these are display values for the
-   panel header, not bar data. No Bar object and no series of bars is ever held in state — the
-   bars themselves go straight to the chart's series ref. */
+/* the only thing that crosses into React state, rebuilt at most once per bar */
 export interface Summary {
-  /** newest close, the one number the header exists to show */
   lastClose: number | null
   lastCount: number | null
   lastWindowStart: number | null
   lastWindowSpan: number | null
-  /** open of the earliest bar held, for change-since-first */
   firstOpen: number | null
   high: number | null
   low: number | null
   barCount: number
-  /** live bars declined because they predate the last bar drawn */
   lateDropped: number
-  /** same-window re-emissions that were more complete and replaced the drawn candle */
   duplicateSuperseded: number
-  /** same-window re-emissions that were no more complete and were declined */
   duplicateIgnored: number
 }
 
@@ -61,8 +45,6 @@ export const EMPTY_SUMMARY: Summary = {
   duplicateIgnored: 0,
 }
 
-/** Derive the socket URL from the page origin. The backend host is never named here:
-    in production the page is served by uvicorn itself, and in dev Vite proxies /ws. */
 export function socketUrl(symbol: string): string {
   const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
   return `${proto}//${window.location.host}/ws/${encodeURIComponent(symbol)}`
@@ -70,8 +52,7 @@ export function socketUrl(symbol: string): string {
 
 const BACKOFF_MIN_MS = 500
 const BACKOFF_MAX_MS = 8000
-/* The server replays history in a tight loop and gives no end-of-backfill marker, so the
-   burst is delimited by either the first live frame or a short idle gap. */
+/* no end of backfill marker on the wire, so the burst ends at the first live frame or a gap */
 const BACKFILL_IDLE_MS = 250
 
 export interface FeedCallbacks {
@@ -88,14 +69,11 @@ export class SymbolFeed {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private backfillTimer: ReturnType<typeof setTimeout> | null = null
 
-  /* Per-connection backfill staging. Not React state: these churn on every frame. */
   private backfillBuf: Bar[] = []
   private backfillFlushed = false
-  /* Held so a chart that mounts after the burst still gets its history. */
+  /* held so a chart that mounts after the burst still gets its history */
   private lastBackfill: Bar[] = []
 
-  /* Running aggregates. Plain fields — recomputing these by mapping a retained bar array on
-     every render is exactly the pattern that forces bar data into state. */
   private agg: Summary = { ...EMPTY_SUMMARY }
 
   private readonly symbol: string
@@ -106,7 +84,6 @@ export class SymbolFeed {
     this.cb = cb
   }
 
-  /** The chart registers here. If history already arrived, it is replayed immediately. */
   setSink(sink: BarSink | null): void {
     this.sink = sink
     if (sink && this.backfillFlushed && this.lastBackfill.length) {
@@ -128,7 +105,7 @@ export class SymbolFeed {
     const ws = this.ws
     this.ws = null
     if (ws) {
-      // Drop handlers first so the close does not schedule a reconnect on an unmounted feed.
+      // drop handlers first or close() schedules a reconnect on a dead feed
       ws.onopen = ws.onclose = ws.onerror = ws.onmessage = null
       ws.close()
     }
@@ -140,7 +117,6 @@ export class SymbolFeed {
     this.attempt += 1
     this.cb.onStatus('connecting', this.attempt)
 
-    // A fresh connection means a fresh backfill; stage it from scratch.
     this.backfillBuf = []
     this.backfillFlushed = false
 
@@ -165,7 +141,7 @@ export class SymbolFeed {
     }
 
     ws.onerror = () => {
-      /* onclose always follows; reconnect is driven from there so it happens exactly once. */
+      /* onclose always follows, reconnect happens there so it happens once */
     }
 
     ws.onclose = () => {
@@ -183,23 +159,21 @@ export class SymbolFeed {
     try {
       raw = JSON.parse(data)
     } catch {
-      return // malformed JSON: skip the frame, keep the socket
+      return // malformed JSON, skip the frame and keep the socket
     }
 
     const msg = parseBarMessage(raw)
-    if (!msg) return // unexpected shape: same treatment
+    if (!msg) return // unexpected shape, same treatment
 
     const { type, ...bar } = msg
 
     if (type === 'backfill' && !this.backfillFlushed) {
       this.backfillBuf.push(bar)
-      // Restart the idle timer; the burst ends when frames stop or a live frame arrives.
       if (this.backfillTimer) clearTimeout(this.backfillTimer)
       this.backfillTimer = setTimeout(() => this.flushBackfill(), BACKFILL_IDLE_MS)
       return
     }
 
-    // First live frame closes the backfill window, even if the idle timer has not fired.
     if (!this.backfillFlushed) this.flushBackfill()
 
     this.foldLive(bar)
@@ -213,16 +187,12 @@ export class SymbolFeed {
     }
     this.backfillFlushed = true
 
-    /* Sort ascending by window_start before it reaches setData. The backfill is "the last
-       sixty candles produced", not "the last sixty seconds": it can straddle an arbitrary
-       gap, and Lightweight Charts throws on unordered data. */
+    /* the burst can straddle a gap and the chart throws on unordered data */
     const sorted = [...this.backfillBuf].sort((a, b) => a.window_start - b.window_start)
     this.backfillBuf = []
     this.lastBackfill = sorted
 
-    /* A reconnect replaces the previous history wholesale, so the aggregates restart with it.
-       The anomaly tallies are session-scoped rather than connection-scoped and carry over —
-       they describe what the backend has been doing, not what is currently on screen. */
+    /* aggregates restart with the new history, the anomaly tallies are session scoped */
     this.agg = {
       ...EMPTY_SUMMARY,
       lateDropped: this.agg.lateDropped,
@@ -236,19 +206,13 @@ export class SymbolFeed {
   }
 
   private foldLive(bar: Bar): void {
-    // The chart decides; the summary follows it, so the headline price can never show a bar
-    // the chart declined to draw.
     const outcome: LiveOutcome = this.sink ? this.sink.onLive(bar) : 'not-drawn'
     this.accumulate(bar, outcome)
-    // One setState per bar per symbol — the only React work the stream causes.
     this.cb.onSummary(this.agg)
   }
 
-  /* Fold a bar into the running aggregates, honouring what the chart actually did with it.
-
-     Session high/low take every bar regardless of outcome — a bar that arrived too late to
-     plot still reports a price that genuinely traded. The headline figures take only bars the
-     chart drew, so the number in the header always describes the candle on screen. */
+  /* high and low take every bar, a late one still reports a price that traded, the headline
+     figures take only what the chart drew */
   private accumulate(bar: Bar, outcome: LiveOutcome): void {
     const a = this.agg
     const drawn = outcome === 'applied' || outcome === 'duplicate-superseded'
@@ -260,7 +224,7 @@ export class SymbolFeed {
       firstOpen: a.firstOpen === null ? bar.open : a.firstOpen,
       high: a.high === null ? bar.high : Math.max(a.high, bar.high),
       low: a.low === null ? bar.low : Math.min(a.low, bar.low),
-      // A superseded duplicate replaces a candle rather than adding one.
+      // a superseded duplicate replaces a candle rather than adding one
       barCount: outcome === 'applied' ? a.barCount + 1 : a.barCount,
       lateDropped: a.lateDropped + (outcome === 'late-dropped' ? 1 : 0),
       duplicateSuperseded: a.duplicateSuperseded + (outcome === 'duplicate-superseded' ? 1 : 0),
@@ -270,7 +234,7 @@ export class SymbolFeed {
 
   private scheduleReconnect(): void {
     if (this.closed || this.reconnectTimer) return
-    // Exponential backoff with jitter, so three sockets do not retry in lockstep.
+    // jittered so the sockets do not retry in lockstep
     const base = Math.min(BACKOFF_MAX_MS, BACKOFF_MIN_MS * 2 ** Math.max(0, this.attempt - 1))
     const delay = base * (0.7 + Math.random() * 0.6)
     this.reconnectTimer = setTimeout(() => {

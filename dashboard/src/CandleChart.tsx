@@ -11,25 +11,10 @@ import { cssColor } from './color'
 import type { LiveOutcome, SymbolFeed } from './feed'
 import type { Bar } from './types'
 
-/* ────────────────────────────────────────────────────────────────────────────────────────
-   WHY THE CHART LIVES IN A REF AND NOT IN STATE
+/* the chart owns its own canvas, so it lives in a ref and bars go straight to
+   series.update(). holding bar data in state would rebuild it once a second */
 
-   Lightweight Charts creates and owns its own canvas. React cannot render into it and must
-   not try to manage its contents. So:
-
-     - createChart() and addSeries() run ONCE, in the effect with an empty dependency array
-       below, and are disposed in that effect's cleanup.
-     - Backfill is applied with series.setData(), once per connection, after sorting.
-     - Every later bar is applied with series.update(), called straight on the ref.
-
-   If bar data went into useState instead, this component would re-render on every message —
-   once a second per chart, three charts — and the chart would be torn down and rebuilt each
-   time. The symptom is a chart that flickers, drops frames, and loses zoom and pan position.
-
-   This is the part a future reader is most likely to "clean up" into useState. Don't.
-   ──────────────────────────────────────────────────────────────────────────────────────── */
-
-/** window_start is Unix seconds as a float; the library wants integer seconds. */
+/** window_start is a float, the library wants whole seconds */
 function toChartBar(bar: Bar): CandlestickData<UTCTimestamp> {
   return {
     time: Math.floor(bar.window_start) as UTCTimestamp,
@@ -44,15 +29,11 @@ export function CandleChart({ feed }: { feed: SymbolFeed }) {
   const hostRef = useRef<HTMLDivElement | null>(null)
   const chartRef = useRef<IChartApi | null>(null)
   const seriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null)
-  /* The newest bar time applied to the series. update() rejects anything older, so this is
-     what lets us detect a late bar and decline it deliberately instead of throwing. */
+  /* update() throws on anything older, so late bars are declined against this */
   const lastTimeRef = useRef<number>(0)
-  /* The tick count of the candle currently drawn at lastTimeRef. The series itself cannot be
-     asked — update() only ever received OHLC and a time — so the count is tracked here
-     alongside it. It is the tiebreak when the same window is published twice. */
+  /* the series cannot be asked for it, and it breaks the tie on a repeated window */
   const lastCountRef = useRef<number>(0)
 
-  // ── Chart lifecycle: created once, disposed once. Never keyed on data. ──
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -89,7 +70,6 @@ export function CandleChart({ feed }: { feed: SymbolFeed }) {
       },
     })
 
-    // v5 API: series definitions are passed to addSeries (v4's addCandlestickSeries is gone).
     const series = chart.addSeries(CandlestickSeries, {
       upColor: c.up,
       downColor: c.down,
@@ -103,9 +83,7 @@ export function CandleChart({ feed }: { feed: SymbolFeed }) {
     chartRef.current = chart
     seriesRef.current = series
 
-    /* Lightweight Charts does not follow its container on its own. The observer is created
-       in this same effect and disconnected in its cleanup, so it can never outlive the chart
-       it is resizing. */
+    /* the chart does not follow its container on its own */
     const ro = new ResizeObserver((entries) => {
       const { width, height } = entries[0].contentRect
       if (width > 0 && height > 0) {
@@ -124,7 +102,6 @@ export function CandleChart({ feed }: { feed: SymbolFeed }) {
     }
   }, [])
 
-  // ── Sink registration: bars arrive here and go straight to the series ref. ──
   useEffect(() => {
     feed.setSink({
       onBackfill(bars: Bar[]) {
@@ -132,10 +109,7 @@ export function CandleChart({ feed }: { feed: SymbolFeed }) {
         const chart = chartRef.current
         if (!series || !chart) return
 
-        /* Already sorted ascending by the feed. Flooring to whole seconds can collapse two
-           window_starts onto one timestamp, and setData rejects repeated times, so drop all
-           but the last row for any given second — the later one is the more recent bar.
-           Deduping the Bars rather than the mapped rows keeps `count` reachable below. */
+        /* flooring can collapse two windows onto one second and setData rejects repeats */
         const deduped = bars.filter(
           (b, i) =>
             i === bars.length - 1 ||
@@ -146,33 +120,23 @@ export function CandleChart({ feed }: { feed: SymbolFeed }) {
         const newest = deduped.length ? deduped[deduped.length - 1] : null
         lastTimeRef.current = newest ? Math.floor(newest.window_start) : 0
         lastCountRef.current = newest ? newest.count : 0
-        // The only automatic viewport change there is. Live updates never refit, which is
-        // what lets a zoom or pan survive the incoming stream.
+        // the only refit there is, so a zoom or pan survives the stream
         chart.timeScale().fitContent()
       },
 
       onLive(bar: Bar): LiveOutcome {
         const series = seriesRef.current
-        // The chart effect above runs before this sink is registered, so the series exists by
-        // the time any bar can arrive. Guarded anyway: nothing drawn, nothing tallied.
         if (!series) return 'not-drawn'
 
-        /* Candles are positioned by window_start, never by arrival order. "live" only means
-           "arrived after your backfill": a restarted aggregator replays a burst of old
-           windows still tagged live. */
+        /* live means arrived after your backfill, not recent, a restarted aggregator replays
+           old windows still tagged live */
         const time = Math.floor(bar.window_start)
 
-        /* Older than what is drawn. update() throws on this, so it is declined and counted
-           rather than allowed to throw. Reinserting it would mean rebuilding the series with
-           setData(), which resets zoom and pan — too high a price for a candle that has
-           already scrolled into history. The drop is surfaced in the footer, not swallowed. */
+        /* reinserting it means setData() and a lost zoom, so it is declined and footered */
         if (time < lastTimeRef.current) return 'late-dropped'
 
-        /* Same window published twice. The aggregator can re-emit a sealed window after a
-           restart, and the replay is not always the poorer copy: its wall-clock backstop is
-           suppressed while it drains a backlog, so a replayed window can include a tick the
-           live pass force-sealed past. `count` is the only completeness signal on the wire,
-           so first wins unless the newcomer is strictly more complete. */
+        /* a replay is not always the poorer copy, the aggregator suppresses its wall clock
+           backstop while draining a backlog, so `count` decides */
         if (time === lastTimeRef.current) {
           if (bar.count <= lastCountRef.current) return 'duplicate-ignored'
           series.update(toChartBar(bar))

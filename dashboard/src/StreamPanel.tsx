@@ -12,9 +12,8 @@ const fmtPrice = (n: number) => n.toFixed(2)
 const fmtClock = (unixSeconds: number) =>
   new Date(unixSeconds * 1000).toLocaleTimeString('en-GB', { hour12: false })
 
-/* One symbol, one socket, one chart. Everything rendered here comes from the summary
-   snapshot, which the feed rebuilds at most once per bar. The bars themselves bypass React
-   entirely and go to the chart's series ref. */
+/* everything rendered here comes from the summary snapshot, which the feed rebuilds at most
+   once per bar, the bars themselves bypass React entirely */
 export function StreamPanel({ symbol }: { symbol: string }) {
   const { status, attempt, summary, feed } = useSymbolFeed(symbol)
   const {
@@ -28,8 +27,7 @@ export function StreamPanel({ symbol }: { symbol: string }) {
   const change = hasBar && firstOpen !== null ? lastClose - firstOpen : 0
   const pct = hasBar && firstOpen ? (change / firstOpen) * 100 : 0
   const dir = change > 0 ? 'up' : change < 0 ? 'down' : 'flat'
-  // History fills at one bar per second from an empty server, so a short series is a cold
-  // start, not a fault. It is labelled as such rather than dressed up as an error.
+  // history fills at one bar per second, so a short series is a cold start and not a fault
   const cold = barCount > 0 && barCount < 8
 
   return (
@@ -80,8 +78,8 @@ export function StreamPanel({ symbol }: { symbol: string }) {
       </header>
 
       <div className="sp__plot">
-        {/* The chart host is always mounted, so the chart is never rebuilt as bars arrive.
-            The empty state is an overlay on top of it, not a replacement for it. */}
+        {/* the host stays mounted so the chart is never rebuilt, the empty state is an
+            overlay on top of it rather than a replacement */}
         <CandleChart feed={feed} />
         {barCount === 0 ? (
           <div className="sp__empty">
@@ -104,9 +102,8 @@ export function StreamPanel({ symbol }: { symbol: string }) {
         <span>{lastCount !== null ? `${lastCount} ticks` : '—'}</span>
         <span>{barCount} bars held</span>
         {cold ? <span className="sp__badge">cold start</span> : null}
-        {/* Three distinct upstream conditions, kept apart on purpose: a bar that arrived too
-            late to plot, a re-emitted window that improved on what was drawn, and one that
-            did not. Collapsing them would hide which is happening. */}
+        {/* three different upstream conditions, collapsing them would hide which is
+            happening */}
         {lateDropped > 0 ? (
           <span className="sp__badge sp__badge--note">{lateDropped} late dropped</span>
         ) : null}
@@ -116,7 +113,7 @@ export function StreamPanel({ symbol }: { symbol: string }) {
         {duplicateIgnored > 0 ? (
           <span className="sp__badge sp__badge--note">{duplicateIgnored} dup ignored</span>
         ) : null}
-        {/* The window width comes off the message rather than being assumed to be 1s. */}
+        {/* width comes off the message rather than being assumed to be 1s */}
         <span className="sp__footRight">
           window {lastWindowSpan !== null ? lastWindowSpan.toFixed(0) : '—'}s
         </span>

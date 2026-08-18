@@ -1,0 +1,38 @@
+# dev shape, merged automatically on a bare `up`. docker-compose.yml is what ships, so pass
+# -f docker-compose.yml to skip this file
+#
+#   docker compose --profile apps up -d                        dev
+#   docker compose -f docker-compose.yml --profile apps up -d  prod
+
+services:
+  web:
+    command: uvicorn backend.webserver:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      # vite's port is published here, not on the dashboard service, see network_mode below
+      - "5173:5173"
+    volumes:
+      - ./backend:/app/backend
+      - ./config.py:/app/config.py
+      # anonymous volume shadowing the bind mount above so :8000 serves the bundle the image
+      # built rather than whatever stale output sits in the host's backend/static
+      - /app/backend/static
+
+  dashboard:
+    build:
+      context: .
+      target: dashboard
+    container_name: dashboard-dev
+    profiles: ["apps"]
+    # shares the web container's network namespace on purpose, vite proxies /ws to
+    # ws://localhost:8000 and in a container of its own that localhost is the wrong container.
+    # sharing it keeps single origin in dev with no CORS middleware and no VITE_WS_URL, the
+    # cost is that ports have to be declared on web above
+    network_mode: "service:web"
+    depends_on:
+      - web
+    volumes:
+      - ./dashboard:/app/dashboard
+      # keeps the host's macOS built node_modules from burying the image's linux ones, it
+      # persists across restarts so a package.json change needs --force-recreate
+      - /app/dashboard/node_modules
+    command: npm run dev -- --host 0.0.0.0

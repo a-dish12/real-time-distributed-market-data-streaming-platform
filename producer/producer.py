@@ -8,9 +8,9 @@ import random
 import json
 import time
 from kafka import KafkaProducer
+from config import KAFKA_BOOTSTRAP, MARKET_EVENTS_TOPIC
 
-BOOTSTRAP = "localhost:29092"   # the door into Kafka from your Mac
-TOPIC = "market-events"
+
 SYMBOLS = ["AAPL", "MSFT", "TSLA","NVDA","INTC"]
 
 
@@ -35,7 +35,7 @@ def partition_key(event: dict) -> bytes:
 
 def main() -> None:
     producer = KafkaProducer(
-        bootstrap_servers=BOOTSTRAP,
+        bootstrap_servers=KAFKA_BOOTSTRAP,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
     )
 
@@ -49,7 +49,7 @@ def main() -> None:
                 event = make_event(symbol, counters[symbol],prices[symbol])
                 counters[symbol] += 1
 
-                producer.send(TOPIC, key=partition_key(event), value=event)
+                producer.send(MARKET_EVENTS_TOPIC, key=partition_key(event), value=event)
                 print("sent:", event)
 
             time.sleep(0.5)

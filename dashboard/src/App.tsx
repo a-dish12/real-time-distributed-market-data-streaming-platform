@@ -1,7 +1,6 @@
 import { StreamPanel } from './StreamPanel'
 
-/* Three symbols, three independent sockets, three charts, stacked full-width.
-   There is no combined endpoint — /ws/AAPL carries AAPL bars only. */
+/* one socket per symbol, there is no combined endpoint */
 const SYMBOLS = ['AAPL', 'MSFT', 'TSLA'] as const
 
 export default function App() {

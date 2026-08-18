@@ -1,6 +1,5 @@
-/* Lightweight Charts parses colour strings itself and does not understand oklch(), which is
-   what every token in the design system is authored in. Anything crossing into the canvas is
-   resolved to hex here first. Values that are already hex/rgb/named pass through untouched. */
+/* lightweight-charts parses colours itself and does not understand oklch(), which every
+   token is authored in, so anything crossing into the canvas is resolved to hex first */
 
 export function oklchToHex(input: string): string {
   const m = input.trim().match(/^oklch\(\s*([\d.]+%?)\s+([\d.]+)\s+([\d.]+)/i)
@@ -35,7 +34,7 @@ export function oklchToHex(input: string): string {
   return `#${hex.join('')}`
 }
 
-/** Resolve a CSS custom property to a canvas-safe hex string. */
+/** resolve a CSS custom property to a canvas safe hex string */
 export function cssColor(name: string): string {
   const raw = getComputedStyle(document.documentElement).getPropertyValue(name).trim()
   return oklchToHex(raw)

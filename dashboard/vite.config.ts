@@ -1,14 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// This file is the ONLY place the backend's dev-time host may be named.
-//
-// In production uvicorn serves the built bundle from backend/static, so the page and the
-// WebSocket share an origin and window.location resolves correctly on its own. In dev, Vite
-// serves on 5173 while uvicorn is on 8000, so window.location would point at Vite. The proxy
-// below closes that gap: application code always builds its URL from window.location and
-// hits /ws, and in dev that request is forwarded here. `ws: true` is what makes the proxy
-// perform the WebSocket upgrade rather than treating /ws as a plain HTTP route.
+// the only place the backend's host may be named, and only for dev. in production uvicorn
+// serves the bundle itself so window.location already points at the right place, in dev vite
+// is on 5173 and uvicorn on 8000, so /ws is proxied across
 export default defineConfig({
   plugins: [react()],
   server: {
@@ -21,7 +16,7 @@ export default defineConfig({
     },
   },
   build: {
-    // uvicorn mounts this directory; see backend/webserver.py
+    // uvicorn mounts this, and the Dockerfile's dashboard stage relies on the relative path
     outDir: '../backend/static',
     emptyOutDir: true,
   },

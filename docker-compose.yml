@@ -15,11 +15,18 @@ services:
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # left on, a producer that starts first gets market-events created at the broker default
+      # of one partition, which silently turns a 3 partition topic into 1 and produces
+      # plausible looking bars with no error anywhere. explicit --create still works, so
+      # kafka-init and the Makefile topic targets are unaffected
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     healthcheck:
       test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
+      # KRaft boot takes 10-20s, without this the retry budget is spent on startup
+      start_period: 30s
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -33,3 +40,89 @@ services:
       KAFKA_CLUSTERS_0_NAME: local
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
       DYNAMIC_CONFIG_ENABLED: "true"
+
+  # one-shot topic creation, exits 0 and is a no-op after the first run thanks to
+  # --if-not-exists. reuses the broker image only because it carries kafka-topics.sh
+  kafka-init:
+    image: apache/kafka:3.8.0
+    container_name: kafka-init
+    profiles: ["apps"]
+    depends_on:
+      kafka:
+        condition: service_healthy
+    # stays "no" while the apps use unless-stopped, they gate on
+    # service_completed_successfully which a restarting container can never satisfy
+    restart: "no"
+    entrypoint: ["/bin/sh", "-c"]
+    # list form matters, compose word-splits a bare string command so `sh -c` would only get
+    # the first word, create no topics and still exit 0
+    command:
+      - |
+        set -e
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists --topic market-events --partitions 3 --replication-factor 1
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+          --create --if-not-exists --topic bars --partitions 1 --replication-factor 1
+        echo "topics ready:"
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe
+
+  # the three app processes, same image, different command
+  #
+  #   docker compose up -d                 broker and Kafka UI only, apps run on the host
+  #   docker compose --profile apps up -d  everything in containers
+  #
+  # bootstrap is kafka:9092 because inside a container localhost is that container, host
+  # processes use the 29092 listener instead. the two gates answer different questions:
+  # service_healthy means the broker is up, service_completed_successfully means the topics
+  # exist. restart covers a crash later on, which the gates cannot
+
+  producer:
+    build: .
+    profiles: ["apps"]
+    command: python -m producer.producer
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  aggregator:
+    build: .
+    profiles: ["apps"]
+    command: python -m consumer.consumer
+    restart: unless-stopped
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+
+  web:
+    build: .
+    profiles: ["apps"]
+    # --host 0.0.0.0 is mandatory, uvicorn's default of 127.0.0.1 means this container only
+    # and the port mapping below would forward to nothing
+    command: uvicorn backend.webserver:app --host 0.0.0.0 --port 8000
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      KAFKA_BOOTSTRAP: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+      kafka-init:
+        condition: service_completed_successfully
+    # /health rather than "/", which returns 200 off the static mount whether or not the
+    # stream is alive. python -c because the runtime image has no curl or wget
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

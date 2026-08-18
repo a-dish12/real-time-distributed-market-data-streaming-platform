@@ -5,6 +5,84 @@ larger design decisions lives in [`docs/`](docs/).
 
 ---
 
+## Stage 6 — containerisation
+
+
+The three application processes now run as containers alongside the broker, built from a single
+multi-stage image: Node compiles the dashboard, Python runs everything, and the Node toolchain
+is dropped from what ships. The producer, aggregator and web server are the same codebase
+started with different commands, so they share one image and differ only in `command:` —
+building three would mean three copies of identical layers. The image carries no `CMD`, because
+there is no single main process for it to name.
+
+The build assembles the frontend and the backend into one artifact. Vite writes to
+`../backend/static`, resolved relative to its own project root, so the Docker stage that builds
+it mirrors the repo layout in order for that relative path to land where the runtime stage
+expects it. `backend/static` is excluded from the build context despite the image needing it:
+it is build output, and leaving it in the context lets a stale local build be copied in ahead of
+the one the image just produced. The only path into the image is the explicit copy from the
+build stage, which makes the shipped UI a function of the repository rather than of when someone
+last ran a build by hand.
+
+Topics are created by a one-shot `kafka-init` container that the app services wait on with
+`condition: service_completed_successfully`, and automatic topic creation is now disabled on the
+broker. These are one decision, not two. Previously a producer that started first had
+`market-events` created for it at the broker default of one partition, quietly reducing a
+three-partition topic to one and leaving the per-partition watermark and idle-backstop paths of
+Stage 3.5 with nothing to exercise — a misconfiguration that yielded plausible-looking bars and
+no error anywhere. Disabling automatic creation turns that silence into a failure; `kafka-init`
+is what stops the failure from happening. Idempotence comes from `--if-not-exists`, so the step
+runs on every `up` and exits successfully whether or not it had anything to do. Explicit
+creation is unaffected by the broker flag, so the Makefile topic targets still work.
+
+The web service exposes `/health`, which reports the bars consumer rather than the process. A
+probe against `/` is answered by the static mount and returns 200 whenever a bundle exists on
+disk — true with the broker down and no bar in an hour — so it cannot distinguish serving a page
+from being connected to Kafka. Readiness is deliberately *the consumer task is alive and
+subscribed*, not *a bar has arrived*: bars seal a window plus a watermark delay after the events
+behind them, so keying off arrival would report unhealthy for the whole first window on every
+cold start, and the container healthcheck would act on it. The last-bar timestamp is reported
+alongside as an observation rather than a gate.
+
+The app services carry `restart: unless-stopped`. The startup gates run at `up` time and do
+nothing for a crash an hour later; without a policy the default is to stay dead, and a dead
+aggregator presents as a chart that stops with nothing to point at.
+
+A `docker-compose.override.yml` adds the Vite dev server and `uvicorn --reload`, merged
+automatically on a bare `up` and skipped when `-f docker-compose.yml` names the production shape
+explicitly. The dev dashboard shares the web container's network namespace, which looks wrong
+and is the point: `vite.config.ts` proxies to `ws://localhost:8000`, and in a container of its
+own `localhost` is that container. Sharing the namespace makes the name resolve to uvicorn, so
+single origin holds in development with no CORS middleware, no environment variable naming the
+socket, and no change to the Vite config.
+
+Verified in both shapes: topics come up at three and one partitions, the app services start only
+after the broker is healthy and the topics exist, `/health` reports ready with no bar yet
+received, a killed aggregator restart-loops through a broker outage and recovers unattended when
+the broker returns, and bars reach a browser client through the dev proxy.
+
+### Scoped out of this stage
+
+**`/health` does not detect an unreachable broker.** aiokafka retries internally, so a broker
+outage leaves the consumer task alive and subscribed and the endpoint green; only `last_bar_at`
+goes stale, and nothing gates on it. This follows from the readiness rule above rather than
+contradicting it — the rule was chosen to avoid false alarms on cold start, and the cost is
+false calm during an outage. Closing it means degrading on staleness only once a first bar has
+been seen, which is a different endpoint contract and was left for when the dashboard needs it.
+
+**The aggregator builds its `KafkaProducer` at module level**, so it connects during import,
+before `main()`. The startup gates cover the cold-start case and `restart: unless-stopped`
+covers a restart landing during an outage, since kafka-python already retries bootstrap for
+about thirty seconds before raising. Wrapping the constructor in retry-with-backoff would close
+the remaining sliver, but it would also entrench a connection opened at import time — which is
+the more interesting problem, since it is also why the module cannot be imported for a test
+without opening a socket. Both belong to the same future change: moving construction into
+`main()`.
+
+Design record: [`docs/build_and_deploy.md`](build_and_deploy.md)
+
+---
+
 ## Stage 5 — WebSocket fan-out and the browser dashboard
 
 A FastAPI service consumes `bars` and streams candles to browsers over a WebSocket at

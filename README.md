@@ -39,8 +39,10 @@ object held in refs rather than React state, so a zoom or pan survives the incom
 `npm run build` emits into `backend/static`, which the web server serves, so the page and its
 socket share an origin.
 
-**Infrastructure** (`docker-compose.yml`) — one Kafka broker in KRaft mode plus a Kafka UI,
-with a `Makefile` for the common commands.
+**Infrastructure** (`docker-compose.yml`, `Dockerfile`) — one Kafka broker in KRaft mode plus a
+Kafka UI, and the three application processes as optional services behind a Compose profile, so
+they can run either in containers or on the host against the same broker. One multi-stage image
+serves all three. A `Makefile` covers the common commands.
 
 ## Design records
 
@@ -57,19 +59,42 @@ The interesting decisions, each with its rejected alternatives and accepted cost
 
 ## Getting started
 
-Prerequisites: Docker Desktop, Python 3.12+, Node 20+.
+The three processes run either on your machine or in containers, from the same code. Both
+modes need the broker and the topics first:
 
 ```bash
-make up                              # broker and Kafka UI
-make topics-create                   # both topics, safe to re-run
+make up              # broker and Kafka UI
+make topics-create   # both topics, safe to re-run
+```
+
+### Everything in containers
+
+Prerequisite: Docker Desktop.
+
+```bash
+make up-apps         # builds the image, starts producer, aggregator and web
+```
+
+That is the whole system. Open http://localhost:8000; `make logs` follows the three processes.
+
+### Processes on the host
+
+Prerequisites: Python 3.12+, Node 20+. Useful when you want a debugger, or fast edit-and-restart
+on one process while the rest keeps running.
+
+```bash
 source .venv/bin/activate
 pip install -r requirements.txt
 cd dashboard && npm install && npm run build && cd ..   # UI into backend/static
 
-python producer/producer.py          # terminal 1
-python consumer/consumer.py          # terminal 2
-cd backend && uvicorn webserver:app  # terminal 3
+python -m producer.producer          # terminal 1
+python -m consumer.consumer          # terminal 2
+uvicorn backend.webserver:app        # terminal 3
 ```
+
+All three run **from the repository root**, and the `-m` form matters: it puts the repo root on
+`sys.path`, which is what makes `from config import ...` resolve. `python producer/producer.py`
+puts `producer/` there instead and fails with `ModuleNotFoundError: No module named 'config'`.
 
 Then open http://localhost:8000. Charts fill at one candle per second from whatever history the
 web server holds.
@@ -79,6 +104,23 @@ For frontend work, leave uvicorn running and start Vite alongside it with
 uvicorn.
 
 Kafka UI is at http://localhost:8080. `make topics`, `make describe`, `make down` cover the rest.
+
+### Configuration
+
+`config.py` at the repository root is the only place the broker address and topic names are
+named. Each value reads an environment variable and falls back to the host default:
+
+| Variable | Default | Set to |
+|---|---|---|
+| `KAFKA_BOOTSTRAP` | `localhost:29092` | `kafka:9092` inside a container |
+| `MARKET_EVENTS_TOPIC` | `market-events` | |
+| `BARS_TOPIC` | `bars` | |
+
+The two broker addresses are the same broker through two listeners, declared in
+`KAFKA_ADVERTISED_LISTENERS` in `docker-compose.yml`: `localhost:29092` is published to the host,
+`kafka:9092` is reachable on the Compose network. Inside a container `localhost` means that
+container, so the default cannot work there — which is why the three app services set
+`KAFKA_BOOTSTRAP` explicitly and nothing needs to be set for host mode.
 
 [`docs/running.md`](docs/running.md) covers replaying a backlog, the offset and rebalance
 behaviour worth knowing about, and the surprises that look like bugs and are not.

@@ -1,18 +1,18 @@
-/* The wire contract, exactly as backend/webserver.py sends it.
-   Every message is a flat object; `type` is the only discriminant. */
+/* the wire contract as backend/webserver.py sends it, every message is flat and `type` is
+   the only discriminant */
 
 export type BarKind = 'backfill' | 'live'
 
 export interface Bar {
   symbol: string
-  /** Unix seconds, float. Floor before handing to Lightweight Charts. */
+  /** unix seconds as a float, floor it before handing it to lightweight-charts */
   window_start: number
   window_end: number
   open: number
   high: number
   low: number
   close: number
-  /** number of ticks that fed this candle */
+  /** ticks that fed this candle */
   count: number
 }
 
@@ -22,11 +22,15 @@ export interface BarMessage extends Bar {
 
 export type ConnState = 'connecting' | 'connected' | 'disconnected'
 
-const isFiniteNumber = (v: unknown): v is number =>
-  typeof v === 'number' && Number.isFinite(v)
+const isFiniteNumber = (v: unknown): v is number => Number.isFinite(v)
 
-/* Socket frames are `unknown` until proven otherwise. A malformed message must not tear the
-   connection down, so this returns null instead of throwing and the caller skips the frame. */
+/* the typeof is what lets `v >= 0` typecheck, unlike above where isFinite alone is enough */
+const isCount = (v: unknown): v is number =>
+  typeof v === 'number' && Number.isInteger(v) && v >= 0
+
+/* a malformed frame must not tear the connection down, so this returns null and the caller
+   skips it. fields are checked one by one rather than in a loop because that is the form
+   TypeScript narrows, which is what keeps the returned object cast free */
 export function parseBarMessage(raw: unknown): BarMessage | null {
   if (typeof raw !== 'object' || raw === null) return null
   const m = raw as Record<string, unknown>
@@ -34,20 +38,24 @@ export function parseBarMessage(raw: unknown): BarMessage | null {
   if (m.type !== 'backfill' && m.type !== 'live') return null
   if (typeof m.symbol !== 'string') return null
 
-  const nums = ['window_start', 'window_end', 'open', 'high', 'low', 'close', 'count'] as const
-  for (const k of nums) {
-    if (!isFiniteNumber(m[k])) return null
-  }
+  if (!isFiniteNumber(m.window_start)) return null
+  if (!isFiniteNumber(m.window_end)) return null
+  if (!isFiniteNumber(m.open)) return null
+  if (!isFiniteNumber(m.high)) return null
+  if (!isFiniteNumber(m.low)) return null
+  if (!isFiniteNumber(m.close)) return null
+  /* tighter than the prices, a count is a cardinality so -3.7 is as malformed as NaN */
+  if (!isCount(m.count)) return null
 
   return {
     type: m.type,
     symbol: m.symbol,
-    window_start: m.window_start as number,
-    window_end: m.window_end as number,
-    open: m.open as number,
-    high: m.high as number,
-    low: m.low as number,
-    close: m.close as number,
-    count: m.count as number,
+    window_start: m.window_start,
+    window_end: m.window_end,
+    open: m.open,
+    high: m.high,
+    low: m.low,
+    close: m.close,
+    count: m.count,
   }
 }

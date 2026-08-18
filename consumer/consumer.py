@@ -2,10 +2,9 @@ import time
 import json
 from kafka import KafkaConsumer,KafkaProducer
 from kafka.errors import BrokerResponseError
+from config import KAFKA_BOOTSTRAP, MARKET_EVENTS_TOPIC, BARS_TOPIC
 
-MARKET_TOPIC = "market-events"
-BARS_TOPIC="bars"
-BOOTSTRAP = "localhost:29092"
+
 
 IDLE_THRESHOLD=0.8 # how long to wait before declaring a partition quiet
 POLL_TIMEOUT=100  #how often to poll the receiving of messages
@@ -22,13 +21,13 @@ watermarks={}   #partition-> float
 last_activity={} # partition: time
 
 producer=KafkaProducer(
-    bootstrap_servers=BOOTSTRAP,
+    bootstrap_servers=KAFKA_BOOTSTRAP,
     value_serializer=lambda v: json.dumps(v).encode("utf-8")
 )
 
 def caught_up(consumer,partition):
     """return True if partition has been read to end of log"""
-    tp=next((t for t in consumer.assignment() if t.topic==MARKET_TOPIC and t.partition==partition),None)
+    tp=next((t for t in consumer.assignment() if t.topic==MARKET_EVENTS_TOPIC and t.partition==partition),None)
 
     if tp is None:
         return False
@@ -128,15 +127,15 @@ def handle_tick(event,partition):
 
 def main():
     consumer = KafkaConsumer(
-        MARKET_TOPIC,
-        bootstrap_servers=BOOTSTRAP,
+        MARKET_EVENTS_TOPIC,
+        bootstrap_servers=KAFKA_BOOTSTRAP,
         group_id="printer-debug18",
         auto_offset_reset="earliest",
         value_deserializer=deserialize,   # Kafka calls function on each message's bytes
     )
     last_backstop=0.0
 
-    print(f"consuming from '{MARKET_TOPIC}' as group 'printer' (earliest)... Ctrl-C to stop")
+    print(f"consuming from '{MARKET_EVENTS_TOPIC}' as group 'printer' (earliest)... Ctrl-C to stop")
     try:
 
 

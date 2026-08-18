@@ -1,5 +1,5 @@
-/* Tokens lifted from the Tape design system (tokens/*.css). Only the subset this dashboard
-   uses is carried over; no value is altered and nothing new is introduced here. */
+/* the subset of the Tape design system tokens this dashboard uses, no value is altered and
+   nothing new is introduced here */
 
 @import url("https://fonts.googleapis.com/css2?family=Geist+Mono:wght@300;400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
 
@@ -20,18 +20,18 @@
   --gray-300: oklch(0.760 0.008 75);
   --gray-100: oklch(0.925 0.006 75);
 
-  /* mint — up / rising / connected */
+  /* mint, up and rising and connected */
   --mint-500: oklch(0.780 0.155 168);
   --mint-600: oklch(0.680 0.135 168);
   --mint-900: oklch(0.290 0.055 168);
 
-  /* coral — down / falling / disconnected */
+  /* coral, down and falling and disconnected */
   --coral-500: oklch(0.665 0.190 25);
   --coral-600: oklch(0.580 0.180 25);
   --coral-800: oklch(0.395 0.105 25);
   --coral-900: oklch(0.290 0.075 25);
 
-  /* amber — attention / pending, used sparingly */
+  /* amber, attention and pending, used sparingly */
   --amber-500: oklch(0.800 0.150 78);
   --amber-900: oklch(0.300 0.060 74);
 
@@ -51,7 +51,7 @@
   --text-tertiary: var(--gray-500);
   --text-label: var(--gray-500);
 
-  /* market semantics — the only strong colour in the system */
+  /* market semantics, the only strong colour in the system */
   --price-up: var(--mint-500);
   --price-down: var(--coral-500);
   --price-flat: var(--gray-400);
@@ -110,7 +110,7 @@
 
   --numeric-features: "tnum" 1, "zero" 1, "ss01" 1;
 
-  /* motion — reserved for state changes, never for data */
+  /* motion, for state changes and never for data */
   --dur-fast: 90ms;
   --dur-base: 160ms;
   --ease: cubic-bezier(0.2, 0, 0.2, 1);

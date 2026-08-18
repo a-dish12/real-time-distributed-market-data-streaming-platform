@@ -1,0 +1,15 @@
+.venv/
+**/node_modules/
+
+.git/
+logs/
+**/__pycache__/
+**/.DS_Store
+
+# the image does need backend/static, but it is build output and whatever sits in the working
+# tree may be stale or absent, so keep it out of the context and let COPY --from=dashboard be
+# the only way in
+backend/static/
+
+Dockerfile
+.dockerignore
