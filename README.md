@@ -55,6 +55,7 @@ The interesting decisions, each with its rejected alternatives and accepted cost
 | [**Output pipeline**](docs/output_pipeline.md) | Why sealed candles go through a topic rather than straight to a socket, why bars are keyed by symbol, and why `bars` has one partition. |
 | [**Async runtime**](docs/async_runtime.md) | Why the web server runs on an event loop with `aiokafka` instead of bridging a blocking consumer through a thread and a queue, and what that buys elsewhere in the file. |
 | [**WebSocket fan-out**](docs/websocket_fanout.md) | Per-connection state, the race between replaying history and joining a live feed, and what happens when a client disappears mid-send. |
+| [**Shared-watermark experiment**](docs/watermark-experiment.md) | A controlled before/after measurement of the bug per-partition watermarks fixed: a single shared watermark dropped 3000 of 3000 events on the lagging partitions and lost 30 of 32 candles, silently. Includes the documented deviation from `bd12fed`. |
 | [**Browser dashboard**](docs/frontend.md) | Where React stops and the charting library starts, why no bar data lives in React state, how a late or duplicated candle is handled, and why the page and its socket share an origin. |
 
 ## Getting started
