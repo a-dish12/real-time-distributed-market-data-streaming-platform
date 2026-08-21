@@ -25,7 +25,7 @@ watermarks={}   #partition-> float
 
 last_activity={} # partition: time
 
-# ---- experiment counters
+# experiment counters
 # both branches diff their reports, so this block stays identical on each
 events_consumed = 0
 

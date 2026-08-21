@@ -85,14 +85,14 @@ for _ in $(seq 1 30); do
 done
 sleep 3
 
-# ------------------------------------------------------------------- producer
+# producer
 echo "=== replaying workload"
 $PYTHON -m producer.producer --replay
 
 echo "=== waiting ${WAIT_AFTER}s for the idle backstop to seal trailing windows"
 sleep "$WAIT_AFTER"
 
-# ------------------------------------------------- drain + report via SIGINT
+# drain + report via SIGINT
 echo "=== stopping consumer (SIGINT -> drain + report)"
 trap - EXIT
 kill -INT "$CONSUMER_PID"
