@@ -6,12 +6,18 @@
 #   scripts/run_experiment.sh reports/main.json
 #
 set -euo pipefail
+# job control. without it a background job started from a non-interactive shell
+# inherits SIG_IGN for SIGINT, so python never installs its KeyboardInterrupt
+# handler and the consumer would ignore the stop signal entirely
+set -m
 
 cd "$(dirname "$0")/.."
 
 REPORT_PATH="${1:?usage: run_experiment.sh <report-path> [group-id]}"
 GROUP="${2:-exp-$(date +%s)-$$}"
-PYTHON="${PYTHON:-.venv/bin/python}"
+# -u: stdout is redirected to a log file here, and block buffering would
+# hide the readiness line the wait loop below greps for
+PYTHON="${PYTHON:-.venv/bin/python} -u"
 # seconds to leave the consumer running past the last event, so the idle
 # backstop (IDLE_THRESHOLD 0.8s, BACKSTOP_INTERVAL 0.2s) seals trailing windows
 WAIT_AFTER="${WAIT_AFTER:-10}"
@@ -61,21 +67,28 @@ fi
 
 # ------------------------------------------------------------------- consumer
 echo "=== starting consumer -> $CONSUMER_LOG"
+# -m, not a path: matches the compose commands, and puts the repo root on
+# sys.path so `from config import ...` resolves
 EXPERIMENT_REPORT="$REPORT_PATH" EXPERIMENT_GROUP_ID="$GROUP" \
-  "$PYTHON" consumer/consumer.py >"$CONSUMER_LOG" 2>&1 &
+  $PYTHON -m consumer.consumer >"$CONSUMER_LOG" 2>&1 &
 CONSUMER_PID=$!
 trap 'kill -INT "$CONSUMER_PID" 2>/dev/null || true' EXIT
 
 # let it join the group and take its assignment before anything is produced
 for _ in $(seq 1 30); do
   grep -q "consuming from" "$CONSUMER_LOG" 2>/dev/null && break
+  if ! kill -0 "$CONSUMER_PID" 2>/dev/null; then
+    echo "ABORT: consumer exited before it started consuming"
+    tail -20 "$CONSUMER_LOG"
+    exit 1
+  fi
   sleep 1
 done
 sleep 3
 
 # ------------------------------------------------------------------- producer
 echo "=== replaying workload"
-"$PYTHON" producer/producer.py --replay
+$PYTHON -m producer.producer --replay
 
 echo "=== waiting ${WAIT_AFTER}s for the idle backstop to seal trailing windows"
 sleep "$WAIT_AFTER"

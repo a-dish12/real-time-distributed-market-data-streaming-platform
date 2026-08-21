@@ -1,0 +1,401 @@
+{
+  "group_id": "main-baseline-4",
+  "window": 1.0,
+  "delay": 0.2,
+  "events_consumed": 3200,
+  "events_represented_in_bars": 3200,
+  "events_dropped": 0,
+  "unaccounted": 0,
+  "bar_send_failures": 0,
+  "distinct_bars_emitted": 32,
+  "seal_categories": {
+    "backstop": 5,
+    "watermark": 27
+  },
+  "drops_by_partition": {},
+  "per_partition": {
+    "0": {
+      "drops": 0,
+      "distinct_bars": 20,
+      "events_represented": 2000,
+      "seal_categories": {
+        "watermark": 18,
+        "backstop": 2
+      }
+    },
+    "1": {
+      "drops": 0,
+      "distinct_bars": 10,
+      "events_represented": 1000,
+      "seal_categories": {
+        "watermark": 9,
+        "backstop": 1
+      }
+    },
+    "2": {
+      "drops": 0,
+      "distinct_bars": 2,
+      "events_represented": 200,
+      "seal_categories": {
+        "backstop": 2
+      }
+    }
+  },
+  "emitted_bars": [
+    [
+      "AAPL",
+      1787200000.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "AAPL",
+      1787200001.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "AAPL",
+      1787200002.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "AAPL",
+      1787200003.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "AAPL",
+      1787200004.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "AAPL",
+      1787200005.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "AAPL",
+      1787200006.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "AAPL",
+      1787200007.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "AAPL",
+      1787200008.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "AAPL",
+      1787200009.0,
+      0,
+      100,
+      "backstop"
+    ],
+    [
+      "INTC",
+      1787200000.0,
+      1,
+      100,
+      "watermark"
+    ],
+    [
+      "INTC",
+      1787200001.0,
+      1,
+      100,
+      "watermark"
+    ],
+    [
+      "INTC",
+      1787200002.0,
+      1,
+      100,
+      "watermark"
+    ],
+    [
+      "INTC",
+      1787200003.0,
+      1,
+      100,
+      "watermark"
+    ],
+    [
+      "INTC",
+      1787200004.0,
+      1,
+      100,
+      "watermark"
+    ],
+    [
+      "INTC",
+      1787200005.0,
+      1,
+      100,
+      "watermark"
+    ],
+    [
+      "INTC",
+      1787200006.0,
+      1,
+      100,
+      "watermark"
+    ],
+    [
+      "INTC",
+      1787200007.0,
+      1,
+      100,
+      "watermark"
+    ],
+    [
+      "INTC",
+      1787200008.0,
+      1,
+      100,
+      "watermark"
+    ],
+    [
+      "INTC",
+      1787200009.0,
+      1,
+      100,
+      "backstop"
+    ],
+    [
+      "MSFT",
+      1787200000.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "MSFT",
+      1787200001.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "MSFT",
+      1787200002.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "MSFT",
+      1787200003.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "MSFT",
+      1787200004.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "MSFT",
+      1787200005.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "MSFT",
+      1787200006.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "MSFT",
+      1787200007.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "MSFT",
+      1787200008.0,
+      0,
+      100,
+      "watermark"
+    ],
+    [
+      "MSFT",
+      1787200009.0,
+      0,
+      100,
+      "backstop"
+    ],
+    [
+      "NVDA",
+      1787200015.0,
+      2,
+      100,
+      "backstop"
+    ],
+    [
+      "TSLA",
+      1787200015.0,
+      2,
+      100,
+      "backstop"
+    ]
+  ],
+  "emitted_keys": [
+    [
+      "AAPL",
+      1787200000.0
+    ],
+    [
+      "AAPL",
+      1787200001.0
+    ],
+    [
+      "AAPL",
+      1787200002.0
+    ],
+    [
+      "AAPL",
+      1787200003.0
+    ],
+    [
+      "AAPL",
+      1787200004.0
+    ],
+    [
+      "AAPL",
+      1787200005.0
+    ],
+    [
+      "AAPL",
+      1787200006.0
+    ],
+    [
+      "AAPL",
+      1787200007.0
+    ],
+    [
+      "AAPL",
+      1787200008.0
+    ],
+    [
+      "AAPL",
+      1787200009.0
+    ],
+    [
+      "INTC",
+      1787200000.0
+    ],
+    [
+      "INTC",
+      1787200001.0
+    ],
+    [
+      "INTC",
+      1787200002.0
+    ],
+    [
+      "INTC",
+      1787200003.0
+    ],
+    [
+      "INTC",
+      1787200004.0
+    ],
+    [
+      "INTC",
+      1787200005.0
+    ],
+    [
+      "INTC",
+      1787200006.0
+    ],
+    [
+      "INTC",
+      1787200007.0
+    ],
+    [
+      "INTC",
+      1787200008.0
+    ],
+    [
+      "INTC",
+      1787200009.0
+    ],
+    [
+      "MSFT",
+      1787200000.0
+    ],
+    [
+      "MSFT",
+      1787200001.0
+    ],
+    [
+      "MSFT",
+      1787200002.0
+    ],
+    [
+      "MSFT",
+      1787200003.0
+    ],
+    [
+      "MSFT",
+      1787200004.0
+    ],
+    [
+      "MSFT",
+      1787200005.0
+    ],
+    [
+      "MSFT",
+      1787200006.0
+    ],
+    [
+      "MSFT",
+      1787200007.0
+    ],
+    [
+      "MSFT",
+      1787200008.0
+    ],
+    [
+      "MSFT",
+      1787200009.0
+    ],
+    [
+      "NVDA",
+      1787200015.0
+    ],
+    [
+      "TSLA",
+      1787200015.0
+    ]
+  ],
+  "drop_audit": []
+}
