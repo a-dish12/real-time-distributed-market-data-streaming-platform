@@ -1,25 +1,24 @@
 #!/usr/bin/env bash
 #
-# End-to-end run for the shared-watermark experiment. Both branches invoke this
-# identically, so the watermark is the only difference between the two runs.
+# end to end run for the shared-watermark experiment, both branches invoke this
+# identically so the watermark is the only difference between the two runs
 #
 #   scripts/run_experiment.sh reports/main.json
 #
 set -euo pipefail
-# job control. without it a background job started from a non-interactive shell
-# inherits SIG_IGN for SIGINT, so python never installs its KeyboardInterrupt
-# handler and the consumer would ignore the stop signal entirely
+# job control, without it a background job from a non-interactive shell inherits
+# SIG_IGN for SIGINT and python never installs its KeyboardInterrupt handler
 set -m
 
 cd "$(dirname "$0")/.."
 
 REPORT_PATH="${1:?usage: run_experiment.sh <report-path> [group-id]}"
 GROUP="${2:-exp-$(date +%s)-$$}"
-# -u: stdout is redirected to a log file here, and block buffering would
-# hide the readiness line the wait loop below greps for
+# -u, stdout goes to a file here and block buffering would hide the readiness
+# line the wait loop greps for
 PYTHON="${PYTHON:-.venv/bin/python} -u"
-# seconds to leave the consumer running past the last event, so the idle
-# backstop (IDLE_THRESHOLD 0.8s, BACKSTOP_INTERVAL 0.2s) seals trailing windows
+# seconds past the last event, long enough for the idle backstop to seal
+# trailing windows
 WAIT_AFTER="${WAIT_AFTER:-10}"
 
 mkdir -p "$(dirname "$REPORT_PATH")" logs
@@ -28,9 +27,9 @@ CONSUMER_LOG="logs/experiment-consumer-$(basename "$REPORT_PATH" .json).log"
 echo "=== branch: $(git rev-parse --abbrev-ref HEAD) @ $(git rev-parse --short HEAD)"
 echo "=== report: $REPORT_PATH   group: $GROUP"
 
-# ---------------------------------------------------------------- wipe kafka
-# the topic otherwise still holds live-producer events timestamped ~63000s below
-# the workload's T, and auto_offset_reset=earliest would replay them into every count
+# wipe kafka
+# the topic still holds live-producer events ~63000s below the workload's T and
+# earliest would replay them into every count
 echo "=== wiping kafka state"
 docker compose down -v
 docker compose up -d
@@ -45,14 +44,14 @@ done
 echo " $status"
 [ "$status" = "healthy" ] || { echo "broker never became healthy"; exit 1; }
 
-# kafka-init sits behind the 'apps' profile and KAFKA_AUTO_CREATE_TOPICS_ENABLE
-# is false, so a bare `up` leaves market-events nonexistent. create it explicitly
+# kafka-init sits behind the apps profile and auto create is off, so a bare up
+# leaves market-events nonexistent
 echo "=== creating topics"
 make topics-create >/dev/null
 
-# ------------------------------------------------------- verify partition count
-# not optional: a different partition count rehashes the symbols across
-# partitions and silently invalidates the whole design with no error anywhere
+# verify partition count
+# not optional, a different count rehashes the symbols and invalidates the
+# design with no error anywhere
 PARTS="$(docker exec kafka /opt/kafka/bin/kafka-topics.sh \
   --bootstrap-server localhost:9092 --describe --topic market-events \
   | awk '/PartitionCount/ {for (i=1;i<NF;i++) if ($i=="PartitionCount:") print $(i+1)}')"
@@ -65,10 +64,10 @@ if [ "$PARTS" != "3" ]; then
   exit 1
 fi
 
-# ------------------------------------------------------------------- consumer
+# consumer
 echo "=== starting consumer -> $CONSUMER_LOG"
-# -m, not a path: matches the compose commands, and puts the repo root on
-# sys.path so `from config import ...` resolves
+# -m not a path, matches the compose commands and puts the repo root on sys.path
+# so `from config import ...` resolves
 EXPERIMENT_REPORT="$REPORT_PATH" EXPERIMENT_GROUP_ID="$GROUP" \
   $PYTHON -m consumer.consumer >"$CONSUMER_LOG" 2>&1 &
 CONSUMER_PID=$!

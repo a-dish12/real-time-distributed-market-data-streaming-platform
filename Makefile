@@ -48,8 +48,7 @@ describe:
 	docker exec kafka /opt/kafka/bin/kafka-topics.sh \
 		--bootstrap-server localhost:9092 --describe
 
-# End-to-end shared-watermark experiment run. Wipes Kafka, creates topics,
-# verifies the partition count, replays the skew workload and reports.
+# end to end shared-watermark experiment run
 #   make experiment REPORT=reports/main.json
 experiment:
 	scripts/run_experiment.sh $(or $(REPORT),reports/$(shell git rev-parse --abbrev-ref HEAD | tr '/' '-').json)

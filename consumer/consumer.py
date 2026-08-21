@@ -15,8 +15,7 @@ BACKSTOP_INTERVAL = 0.2   # run the backstop at most 5x/sec
 WINDOW = 1.0      # window width in seconds
 DELAY  = 0.2      # 200ms watermark grace
 
-# a stale group id makes the second run of an experiment consume nothing and
-# report zero drops for entirely uninteresting reasons, so it is per-run
+# per-run, a stale one makes the next run consume nothing and report zero drops
 GROUP_ID = os.environ.get("EXPERIMENT_GROUP_ID", "printer-debug18")
 REPORT_PATH = os.environ.get("EXPERIMENT_REPORT")
 
@@ -26,10 +25,8 @@ watermarks={}   #partition-> float
 
 last_activity={} # partition: time
 
-# ---------------------------------------------------- experiment instrumentation
-# the shared-watermark experiment diffs two report files directly, so everything
-# below has to stay identical across both branches. it is written here on main
-# and cherry-picked, never retyped
+# ---- experiment counters
+# both branches diff their reports, so this block stays identical on each
 events_consumed = 0
 
 drop_count = 0
@@ -76,8 +73,7 @@ def make_bar(key,bar):
 
 
 def on_send_error(exc, symbol, window_start):
-    # a bar counted as emitted but never landed on the bars topic would make the
-    # conservation check overcount, so permanent failures are counted not just printed
+    # counted, not just printed, or a bar that never landed still counts as represented
     global bar_send_failures
     bar_send_failures += 1
 
@@ -95,9 +91,7 @@ def on_send_error(exc, symbol, window_start):
 
 
 def emit(key, bar, partition, seal):
-    """seal is one of watermark | backstop | drain, and stays distinguishable in
-    the report: a drain bar means the consumer was stopped before the backstop
-    had finished, which invalidates the run rather than being noise"""
+    """seal is watermark, backstop or drain, kept apart in the report"""
     d=make_bar(key,bar)
     symbol, w_start = key
 
@@ -151,8 +145,7 @@ def handle_tick(event,partition):
     if watermark>=window_end:
         print(f"DROP {symbol} @ {event_time} (late, window[{window_start}] sealed)")
 
-        # audit trail. the per-partition breakdown is what makes "only partitions
-        # 0 and 1 lost data" checkable rather than asserted
+        # per-partition breakdown is what makes the p0/p1 claim checkable
         drop_count += 1
         drops_by_partition[partition] = drops_by_partition.get(partition, 0) + 1
         drop_audit.append({
@@ -173,7 +166,7 @@ def handle_tick(event,partition):
 
 
 def build_report():
-    """conservation check plus the per-partition breakdown the experiment turns on"""
+    """conservation check plus the per-partition breakdown"""
     represented = sum(b["count"] for b in emitted)
     unaccounted = events_consumed - represented - drop_count
 
@@ -292,22 +285,18 @@ def main():
                     sweep(p, "backstop")
 
     except KeyboardInterrupt:
-        # unconditional drain: every still-open window is emitted regardless of
-        # any watermark. deliberately NOT done by pushing the watermark forward,
-        # which on the experiment branch would mutate the variable under test
-        # during teardown
+        # every open window, no watermark check. not done by pushing the watermark
+        # forward, that would mutate the variable under test during teardown
         for p in list(windows):
             for key in list(windows[p]):
                 emit(key, windows[p].pop(key), p, "drain")
 
-        # send failures only surface through on_send_error during flush, so the
-        # report has to be built after this flush even though the drain is before it
+        # send failures only surface here, so the report is built after the flush
         producer.flush()
         write_report(build_report())
     finally:
-        # in a finally rather than the except so a KeyError in the backstop or a
-        # deserialization failure still flushes in-flight bars and leaves the
-        # consumer group cleanly
+        # here not in except so a mid-loop raise still flushes bars and leaves
+        # the group cleanly
         producer.flush()
         producer.close()
         consumer.close()

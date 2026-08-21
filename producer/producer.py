@@ -71,12 +71,8 @@ def run_live() -> None:
 
 
 def replay_row(row: dict) -> dict:
-    """event_time comes from the CSV, never from time.time().
-
-    stamping it at send time would make arrival order and event-time order agree,
-    and the skew the experiment measures could not occur at all. the
-    expected_* columns are for post-hoc verification and are ignored here.
-    """
+    """event_time comes from the csv, not time.time(), or arrival order and
+    event-time order agree and no drop can happen"""
     return {
         "symbol": row["symbol"],
         "price": float(row["price"]),
@@ -90,8 +86,8 @@ def run_replay(path: str) -> None:
     with open(path, newline="") as f:
         rows = list(csv.DictReader(f))
 
-    # CSV order is preserved within each phase: the file is already sorted so
-    # each partition's stream is monotone in event time
+    # csv order kept within each phase, the file is sorted so each partition's
+    # stream is monotone in event time
     phase1 = [r for r in rows if int(r["phase"]) == 1]
     phase2 = [r for r in rows if int(r["phase"]) == 2]
 
@@ -100,8 +96,7 @@ def run_replay(path: str) -> None:
         for r in phase1:
             event = replay_row(r)
             producer.send(MARKET_EVENTS_TOPIC, key=partition_key(event), value=event)
-        # load-bearing: phase 1 must be on the broker before phase 2 is queued,
-        # otherwise the two phases can interleave and the skew disappears
+        # phase 1 has to be on the broker before phase 2 is queued or they interleave
         producer.flush()
         print(f"phase 1: {len(phase1)} rows sent")
 
